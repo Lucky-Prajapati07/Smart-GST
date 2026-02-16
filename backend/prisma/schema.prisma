@@ -1,0 +1,235 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id                  Int      @id @default(autoincrement())
+  userId              String
+  businessName        String
+  businessType        String   // Proprietorship, Private Limited, LLP, Partnership
+  natureOfBusiness    String?
+  pan                 String
+  gstin               String   @unique
+  state               String
+  city                String
+  pincode             String
+  address             String?
+  contactMobile       String
+  contactEmail        String?
+  signatoryName       String
+  signatoryMobile     String
+  panCardUrl          String?
+  gstCertificateUrl   String?
+  businessLicenseUrl  String?
+  isActive            Boolean  @default(true)
+  turnover            Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([gstin])
+}
+
+model Clients {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  name        String
+  gstin       String
+  phoneNumber String
+  email       String
+  clientType     String   // e.g., 'Customer', 'Supplier'
+  creditLimit Int?     // Optional credit limit for the client
+  billingAddress String?
+  shippingAddress String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, gstin])
+  @@unique([userId, phoneNumber])
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+model Invoices {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  invoiceNumber String
+  invoiceDate DateTime
+  dueDate     DateTime
+  invoiceType String   // e.g., 'Sales', 'Purchase'
+  party String   // Client or Supplier name
+  partyGstin String
+  amount String?
+  ewayBillNumber String?
+  transportMode String?
+  notes String?
+  gst String?
+  totalAmount String?
+  status String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+}
+
+model Expenses {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  title String
+  category       String
+  amount String
+  gst String
+  totalAmount String?
+  vendor String?
+  paymentMode String
+  date DateTime
+  notes String?
+  uploadReceipt String?
+  itc String?
+  status String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Transactions {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  transactionType String
+  mode       String
+  amount String
+  date DateTime
+  description String
+  reference Int?     // Optional reference for the transaction
+  category String?
+  notes String?
+  status String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Settings {
+  id          Int      @id @default(autoincrement())
+  userId      String   @unique
+  companyName String?
+  pan         String?
+  gstin       String?
+  address     String?
+  phone       String?
+  email       String?
+  bankName    String?
+  accountNumber String?
+  ifsc        String?
+  branch      String?
+  logoUrl     String?
+  invoicePrefix String?
+  dueDays     Int?     @default(30)
+  invoiceFooter String?
+  invoiceTemplate String? @default("standard")
+  einvoiceEnabled Boolean? @default(false)
+  termsConditions String?
+  gstr1Alerts Boolean? @default(true)
+  gstr3bAlerts Boolean? @default(true)
+  paymentDueAlerts Boolean? @default(true)
+  remindBeforeDays Int? @default(3)
+  emailNotifications Boolean? @default(true)
+  smsNotifications Boolean? @default(false)
+  whatsappNotifications Boolean? @default(false)
+  notificationEmail String?
+  notificationPhone String?
+  theme           String? @default("light")
+  compactMode     Boolean? @default(false)
+  accentColor     String? @default("#2563eb")
+  dateFormat      String? @default("DD/MM/YYYY")
+  currencyFormat  String? @default("INR")
+  numberFormat    String? @default("indian")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GSTFiling {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  filingPeriod    String   // e.g., "2024-01", "Q1-2024"
+  filingType      String   // GSTR1, GSTR3B, etc.
+  status          String   @default("draft") // draft, filed, submitted
+  totalSales      Decimal  @default(0) @db.Decimal(15, 2)
+  totalPurchases  Decimal  @default(0) @db.Decimal(15, 2)
+  igst            Decimal  @default(0) @db.Decimal(15, 2)
+  cgst            Decimal  @default(0) @db.Decimal(15, 2)
+  sgst            Decimal  @default(0) @db.Decimal(15, 2)
+  cess            Decimal  @default(0) @db.Decimal(15, 2)
+  itcAvailable    Decimal  @default(0) @db.Decimal(15, 2)
+  taxLiability    Decimal  @default(0) @db.Decimal(15, 2)
+  taxPaid         Decimal  @default(0) @db.Decimal(15, 2)
+  filedDate       DateTime?
+  dueDate         DateTime
+  arn             String?  // Acknowledgement Reference Number
+  calculationData Json?    // Store detailed calculation breakdown
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, filingPeriod, filingType])
+  @@index([userId, filingPeriod])
+}
+
+model Report {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  reportType  String   // sales, purchase, gst, profit-loss, etc.
+  reportName  String
+  period      String   // month, quarter, year
+  startDate   DateTime
+  endDate     DateTime
+  data        Json     // Store report data as JSON
+  generatedAt DateTime @default(now())
+  parameters  Json?    // Store filters/parameters used
+  
+  @@index([userId, reportType, startDate])
+}
+
+model DashboardStats {
+  id              Int      @id @default(autoincrement())
+  userId          String   @unique
+  totalRevenue    Decimal  @default(0) @db.Decimal(15, 2)
+  totalExpenses   Decimal  @default(0) @db.Decimal(15, 2)
+  pendingInvoices Int      @default(0)
+  overdueInvoices Int      @default(0)
+  totalClients    Int      @default(0)
+  gstLiability    Decimal  @default(0) @db.Decimal(15, 2)
+  monthlyRevenue  Json?    // Store monthly revenue data
+  categoryExpenses Json?   // Store expense breakdown
+  lastUpdated     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Otp {
+  id         Int      @id @default(autoincrement())
+  identifier String   // Email address
+  otp        String   // 6-digit OTP code
+  purpose    String   @default("signup") // signup, login, reset-password
+  isVerified Boolean  @default(false)
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  
+  @@index([identifier, purpose])
+  @@index([expiresAt])
+}

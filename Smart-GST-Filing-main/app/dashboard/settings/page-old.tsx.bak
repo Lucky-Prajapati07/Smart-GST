@@ -1,0 +1,762 @@
+"use client"
+
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useUser } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  User, Building, Bell, Shield, CreditCard, Globe, Save, Upload, Edit, Trash2, Settings, Mail, Phone, MapPin, FileText,
+  Download, Search, Filter, Users, Percent, Calculator, Database, ShieldCheck
+} from "lucide-react"
+
+type UserRow = { name: string; email: string; role: "Admin" | "Staff" | "Viewer"; status: "Active" | "Inactive"; lastLogin: string }
+type GSTSlab = { id: string; title: string; rate: number }
+type PaymentMethod = { id: string; label: string; enabled: boolean }
+type RolesPerm = { view: boolean; edit: boolean; delete: boolean }
+type SettingsState = {
+  users: UserRow[]
+  company: {
+    name: string; pan: string; gstin: string; address: string; phone: string; email: string;
+    bankName: string; account: string; ifsc: string; branch: string; logoDataUrl?: string
+  }
+  invoice: { prefix: string; dueDays: number; footer: string; template: string; einvoice: boolean; terms: string }
+  tax: { slabs: GSTSlab[]; payments: PaymentMethod[] }
+  alerts: { gstr1: boolean; gstr3b: boolean; paymentDue: boolean; remindBefore: number }
+  comms: { email: boolean; sms: boolean; whatsapp: boolean; notifyEmail: string; notifyPhone: string }
+  roles: Record<"Admin" | "Staff" | "Viewer", RolesPerm>
+  theme: { dark: boolean; compact: boolean; accent: string; dateFmt: string; currencyFmt: string; numberFmt: string }
+}
+
+const LS_KEY = "app:settings"
+
+export default function SettingsPage() {
+  const { user } = useUser();
+  const [activeTab, setActiveTab] = useState("users")
+  const [state, setState] = useState<SettingsState>({
+    users: [
+      { name: "Rajesh Kumar", email: "rajesh@business.com", role: "Admin", status: "Active", lastLogin: "2024-12-15" },
+      { name: "Priya Sharma", email: "priya@business.com", role: "Staff", status: "Active", lastLogin: "2024-12-14" },
+      { name: "Amit Patel", email: "amit@business.com", role: "Viewer", status: "Inactive", lastLogin: "2024-12-10" },
+    ],
+    company: {
+      name: "Acme Enterprises",
+      pan: "ABCDE1234F",
+      gstin: "27ABCDE1234F1Z5",
+      address: "123 Business Street, Commercial Area, Mumbai - 400001",
+      phone: "+91 98765 43210",
+      email: "contact@acme.com",
+      bankName: "HDFC Bank",
+      account: "1234567890123456",
+      ifsc: "HDFC0001234",
+      branch: "Mumbai Main",
+      logoDataUrl: undefined,
+    },
+    invoice: {
+      prefix: "INV-",
+      dueDays: 30,
+      footer: "Thank you for your business!",
+      template: "Modern",
+      einvoice: false,
+      terms:
+        "1. Payment is due within 30 days of invoice date. 2. Late payments may incur additional charges. 3. All disputes must be reported within 7 days.",
+    },
+    tax: {
+      slabs: [
+        { id: "sl0", title: "Essential Items", rate: 0 },
+        { id: "sl5", title: "Basic Necessities", rate: 5 },
+        { id: "sl12", title: "Standard Items", rate: 12 },
+        { id: "sl18", title: "Regular Items", rate: 18 },
+        { id: "sl28", title: "Luxury Items", rate: 28 },
+      ],
+      payments: [
+        { id: "p-cash", label: "Cash", enabled: true },
+        { id: "p-bank", label: "Bank Transfer", enabled: true },
+        { id: "p-upi", label: "UPI", enabled: true },
+        { id: "p-card", label: "Credit Card", enabled: true },
+        { id: "p-cheque", label: "Cheque", enabled: true },
+        { id: "p-wallet", label: "Digital Wallet", enabled: false },
+      ],
+    },
+    alerts: { gstr1: true, gstr3b: true, paymentDue: true, remindBefore: 3 },
+    comms: { email: true, sms: false, whatsapp: false, notifyEmail: "admin@business.com", notifyPhone: "+91 98765 43210" },
+    roles: {
+      Admin: { view: true, edit: true, delete: true },
+      Staff: { view: true, edit: true, delete: false },
+      Viewer: { view: true, edit: false, delete: false },
+    },
+    theme: {
+      dark: false,
+      compact: false,
+      accent: "#2563eb", // blue-600
+      dateFmt: "DD-MM-YYYY",
+      currencyFmt: "₹ (INR)",
+      numberFmt: "Indian (1,23,456)",
+    },
+  })
+
+  // Get user-specific storage key
+  const getUserKey = (baseKey: string) => {
+    const userId = user?.id || 'default';
+    return `${baseKey}_user_${userId}`;
+  };
+
+  // Load/save settings
+  useEffect(() => {
+    try {
+      const userKey = getUserKey(LS_KEY);
+      const raw = localStorage.getItem(userKey);
+      if (raw) setState((prev) => ({ ...prev, ...(JSON.parse(raw) as SettingsState) }));
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }, [user?.id]);
+  
+  const saveAll = () => {
+    try {
+      const userKey = getUserKey(LS_KEY);
+      localStorage.setItem(userKey, JSON.stringify(state));
+      alert("All changes saved.");
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert("Error saving settings.");
+    }
+  };
+
+  // Users tab helpers
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false)
+  const [newUser, setNewUser] = useState<UserRow>({ name: "", email: "", role: "Viewer", status: "Active", lastLogin: new Date().toISOString().slice(0, 10) })
+  const addUser = () => {
+    if (!newUser.name || !newUser.email) return alert("Name and Email are required.")
+    setState((s) => ({ ...s, users: [newUser, ...s.users] }))
+    setIsAddUserOpen(false)
+    setNewUser({ name: "", email: "", role: "Viewer", status: "Active", lastLogin: new Date().toISOString().slice(0, 10) })
+  }
+  const deleteUser = (email: string) => setState((s) => ({ ...s, users: s.users.filter((u) => u.email !== email) }))
+
+  // Company logo upload
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const onLogoFile = (file?: File) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setState((s) => ({ ...s, company: { ...s.company, logoDataUrl: String(reader.result) } }))
+    reader.readAsDataURL(file)
+  }
+
+  // Tax tab helpers
+  const [rateTitle, setRateTitle] = useState("")
+  const [rateValue, setRateValue] = useState<number>(0)
+  const addRate = () => {
+    if (!rateTitle) return
+    setState((s) => ({
+      ...s,
+      tax: { ...s.tax, slabs: [...s.tax.slabs, { id: `sl-${Date.now()}`, title: rateTitle, rate: rateValue }] },
+    }))
+    setRateTitle("")
+    setRateValue(0)
+  }
+  const editSlab = (id: string, patch: Partial<GSTSlab>) =>
+    setState((s) => ({ ...s, tax: { ...s.tax, slabs: s.tax.slabs.map((r) => (r.id === id ? { ...r, ...patch } : r)) } }))
+  const deleteSlab = (id: string) => setState((s) => ({ ...s, tax: { ...s.tax, slabs: s.tax.slabs.filter((r) => r.id !== id) } }))
+  const togglePayment = (id: string) =>
+    setState((s) => ({ ...s, tax: { ...s.tax, payments: s.tax.payments.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)) } }))
+  const renamePayment = (id: string, label: string) =>
+    setState((s) => ({ ...s, tax: { ...s.tax, payments: s.tax.payments.map((p) => (p.id === id ? { ...p, label } : p)) } }))
+  const addPaymentMethod = () => {
+    const label = prompt("Payment method label?")
+    if (!label) return
+    setState((s) => ({ ...s, tax: { ...s.tax, payments: [...s.tax.payments, { id: `p-${Date.now()}`, label, enabled: true }] } }))
+  }
+
+  // Backup
+  const backupNow = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "settings-backup.json"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const restoreRef = useRef<HTMLInputElement>(null)
+  const onRestore = (file?: File) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as SettingsState;
+        setState(parsed);
+        const userKey = getUserKey(LS_KEY);
+        localStorage.setItem(userKey, JSON.stringify(parsed));
+        alert("Backup restored.");
+      } catch (error) {
+        console.error('Error restoring backup:', error);
+        alert("Invalid backup file.");
+      }
+    };
+    reader.readAsText(file)
+  }
+
+  // Roles
+  const toggleRole = (role: keyof SettingsState["roles"], key: keyof RolesPerm) =>
+    setState((s) => ({ ...s, roles: { ...s.roles, [role]: { ...s.roles[role], [key]: !s.roles[role][key] } } }))
+
+  // Alerts + Communication
+  const updateAlerts = (patch: Partial<SettingsState["alerts"]>) => setState((s) => ({ ...s, alerts: { ...s.alerts, ...patch } }))
+  const updateComms = (patch: Partial<SettingsState["comms"]>) => setState((s) => ({ ...s, comms: { ...s.comms, ...patch } }))
+
+  // Invoice
+  const updateInvoice = (patch: Partial<SettingsState["invoice"]>) => setState((s) => ({ ...s, invoice: { ...s.invoice, ...patch } }))
+
+  // Theme
+  const updateTheme = (patch: Partial<SettingsState["theme"]>) => setState((s) => ({ ...s, theme: { ...s.theme, ...patch } }))
+  const accentChoices = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6"]
+
+  return (
+    <div className="min-h-screen p-6 bg-gray-50">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-3xl shadow-2xl">
+          <div className="absolute inset-0 bg-white" />
+          <div className="relative px-8 py-6">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-50 rounded-2xl">
+                  <Settings className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+                  <p className="text-gray-600 mt-1">Manage your account and application preferences</p>
+                </div>
+              </div>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white px-5" onClick={saveAll}>
+                <Save className="w-4 h-4 mr-2" /> Save All Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Card className="bg-white">
+          <CardContent className="p-0">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <TabsList className="grid w-full grid-cols-8 rounded-none border-b">
+                <TabsTrigger value="users" className="rounded-none">
+                  <Users className="w-4 h-4 mr-2" /> Users
+                </TabsTrigger>
+                <TabsTrigger value="company" className="rounded-none">
+                  <Building className="w-4 h-4 mr-2" /> Company
+                </TabsTrigger>
+                <TabsTrigger value="invoice" className="rounded-none">
+                  <FileText className="w-4 h-4 mr-2" /> Invoice
+                </TabsTrigger>
+                <TabsTrigger value="tax" className="rounded-none">
+                  <Calculator className="w-4 h-4 mr-2" /> Tax
+                </TabsTrigger>
+                <TabsTrigger value="backup" className="rounded-none">
+                  <Database className="w-4 h-4 mr-2" /> Backup
+                </TabsTrigger>
+                <TabsTrigger value="roles" className="rounded-none">
+                  <Shield className="w-4 h-4 mr-2" /> Roles
+                </TabsTrigger>
+                <TabsTrigger value="alerts" className="rounded-none">
+                  <Bell className="w-4 h-4 mr-2" /> Alerts
+                </TabsTrigger>
+                <TabsTrigger value="theme" className="rounded-none">
+                  <Globe className="w-4 h-4 mr-2" /> Theme
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Users */}
+              <TabsContent value="users" className="p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">User Management</h2>
+                    <p className="text-sm text-gray-600">Add and manage users with role-based access</p>
+                  </div>
+                  <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-blue-600 hover:bg-blue-700 text-white">+ Add User</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add User</DialogTitle>
+                        <DialogDescription>Create a new user</DialogDescription>
+                      </DialogHeader>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Name</Label>
+                          <Input value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label>Email</Label>
+                          <Input value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label>Role</Label>
+                          <Select value={newUser.role} onValueChange={(v: any) => setNewUser({ ...newUser, role: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Admin">Admin</SelectItem>
+                              <SelectItem value="Staff">Staff</SelectItem>
+                              <SelectItem value="Viewer">Viewer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Status</Label>
+                          <Select value={newUser.status} onValueChange={(v: any) => setNewUser({ ...newUser, status: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Active">Active</SelectItem>
+                              <SelectItem value="Inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddUserOpen(false)}>Cancel</Button>
+                        <Button onClick={addUser}>Add</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                <div className="rounded-xl border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Last Login</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {state.users.map((u) => (
+                        <TableRow key={u.email}>
+                          <TableCell className="font-medium">{u.name}</TableCell>
+                          <TableCell>{u.email}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{u.role}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={u.status === "Active" ? "bg-blue-600 text-white" : ""}>{u.status}</Badge>
+                          </TableCell>
+                          <TableCell>{u.lastLogin}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={() => deleteUser(u.email)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+
+              {/* Company */}
+              <TabsContent value="company" className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Business Details</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label>Business Name</Label>
+                        <Input value={state.company.name} onChange={(e) => setState({ ...state, company: { ...state.company, name: e.target.value } })} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>PAN Number</Label>
+                          <Input value={state.company.pan} onChange={(e) => setState({ ...state, company: { ...state.company, pan: e.target.value } })} />
+                        </div>
+                        <div>
+                          <Label>GSTIN</Label>
+                          <Input value={state.company.gstin} onChange={(e) => setState({ ...state, company: { ...state.company, gstin: e.target.value } })} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Business Address</Label>
+                        <Textarea value={state.company.address} onChange={(e) => setState({ ...state, company: { ...state.company, address: e.target.value } })} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Phone</Label>
+                          <Input value={state.company.phone} onChange={(e) => setState({ ...state, company: { ...state.company, phone: e.target.value } })} />
+                        </div>
+                        <div>
+                          <Label>Email</Label>
+                          <Input value={state.company.email} onChange={(e) => setState({ ...state, company: { ...state.company, email: e.target.value } })} />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Bank Details</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label>Bank Name</Label>
+                        <Input value={state.company.bankName} onChange={(e) => setState({ ...state, company: { ...state.company, bankName: e.target.value } })} />
+                      </div>
+                      <div>
+                        <Label>Account Number</Label>
+                        <Input value={state.company.account} onChange={(e) => setState({ ...state, company: { ...state.company, account: e.target.value } })} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>IFSC Code</Label>
+                          <Input value={state.company.ifsc} onChange={(e) => setState({ ...state, company: { ...state.company, ifsc: e.target.value } })} />
+                        </div>
+                        <div>
+                          <Label>Branch</Label>
+                          <Input value={state.company.branch} onChange={(e) => setState({ ...state, company: { ...state.company, branch: e.target.value } })} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Company Logo</Label>
+                        <div className="mt-2 rounded-lg border border-dashed p-4 text-center">
+                          {state.company.logoDataUrl ? (
+                            <img src={state.company.logoDataUrl} alt="logo" className="mx-auto h-16 object-contain" />
+                          ) : (
+                            <Upload className="w-6 h-6 text-gray-400 mx-auto" />
+                          )}
+                          <div className="mt-2">
+                            <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => onLogoFile(e.target.files?.[0])} />
+                            <Button variant="outline" onClick={() => logoInputRef.current?.click()}>Choose File</Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Invoice */}
+              <TabsContent value="invoice" className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Invoice Configuration</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Invoice Prefix</Label>
+                          <Input value={state.invoice.prefix} onChange={(e) => updateInvoice({ prefix: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label>Default Due Days</Label>
+                          <Input type="number" value={state.invoice.dueDays} onChange={(e) => updateInvoice({ dueDays: Number(e.target.value || 0) })} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Footer Note</Label>
+                        <Textarea value={state.invoice.footer} onChange={(e) => updateInvoice({ footer: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label>Invoice Template</Label>
+                        <Select value={state.invoice.template} onValueChange={(v) => updateInvoice({ template: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Modern">Modern</SelectItem>
+                            <SelectItem value="Classic">Classic</SelectItem>
+                            <SelectItem value="Minimal">Minimal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label>Enable E-invoicing</Label>
+                        <Switch checked={state.invoice.einvoice} onCheckedChange={(v) => updateInvoice({ einvoice: v })} />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Terms & Conditions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea rows={10} value={state.invoice.terms} onChange={(e) => updateInvoice({ terms: e.target.value })} />
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Tax */}
+              <TabsContent value="tax" className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>GST Rate Slabs</CardTitle>
+                      </div>
+                      <Button onClick={addRate}>+ Add Rate</Button>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <Input placeholder="Title" value={rateTitle} onChange={(e) => setRateTitle(e.target.value)} />
+                        <Input type="number" placeholder="Rate %" value={rateValue} onChange={(e) => setRateValue(Number(e.target.value || 0))} />
+                        <div />
+                      </div>
+                      <div className="space-y-2">
+                        {state.tax.slabs.map((slab) => (
+                          <div key={slab.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                            <div className="font-medium">{slab.title} <span className="text-gray-500">({slab.rate}%)</span></div>
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" size="sm" onClick={() => {
+                                const t = prompt("Edit title", slab.title) ?? slab.title
+                                const r = Number(prompt("Edit rate", String(slab.rate)) ?? slab.rate)
+                                editSlab(slab.id, { title: t, rate: r })
+                              }}>
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => deleteSlab(slab.id)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Payment Methods</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {state.tax.payments.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-3">
+                            <Switch checked={p.enabled} onCheckedChange={() => togglePayment(p.id)} />
+                            <Input value={p.label} onChange={(e) => renamePayment(p.id, e.target.value)} className="h-9 w-52" />
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => togglePayment(p.id)}>
+                            {p.enabled ? "Enabled" : "Disabled"}
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="pt-2">
+                        <Button variant="outline" onClick={addPaymentMethod}>+ Add Payment Method</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Backup */}
+              <TabsContent value="backup" className="p-6 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Backup & Restore</CardTitle>
+                    <CardDescription>Export your settings or restore from a backup file</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-3">
+                    <Button onClick={backupNow}>
+                      <Download className="w-4 h-4 mr-2" /> Backup Now
+                    </Button>
+                    <input ref={restoreRef} type="file" accept="application/json" onChange={(e) => onRestore(e.target.files?.[0] || undefined)} className="hidden" />
+                    <Button variant="outline" onClick={() => restoreRef.current?.click()}>
+                      <Upload className="w-4 h-4 mr-2" /> Restore From File
+                    </Button>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Roles */}
+              <TabsContent value="roles" className="p-6 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Role Permissions</CardTitle>
+                    <CardDescription>Configure role-based permissions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-xl border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Role</TableHead>
+                            <TableHead className="text-center">View</TableHead>
+                            <TableHead className="text-center">Edit</TableHead>
+                            <TableHead className="text-center">Delete</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(["Admin", "Staff", "Viewer"] as const).map((r) => (
+                            <TableRow key={r}>
+                              <TableCell className="font-medium">{r}</TableCell>
+                              <TableCell className="text-center">
+                                <Switch checked={state.roles[r].view} onCheckedChange={() => toggleRole(r, "view")} />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Switch checked={state.roles[r].edit} onCheckedChange={() => toggleRole(r, "edit")} />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Switch checked={state.roles[r].delete} onCheckedChange={() => toggleRole(r, "delete")} />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Alerts */}
+              <TabsContent value="alerts" className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Filing Reminders</CardTitle>
+                      <CardDescription>Configure notification preferences and alerts</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span>GSTR-1 Filing Reminder</span>
+                        <Switch checked={state.alerts.gstr1} onCheckedChange={(v) => updateAlerts({ gstr1: v })} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>GSTR-3B Filing Reminder</span>
+                        <Switch checked={state.alerts.gstr3b} onCheckedChange={(v) => updateAlerts({ gstr3b: v })} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Payment Due Reminders</span>
+                        <Switch checked={state.alerts.paymentDue} onCheckedChange={(v) => updateAlerts({ paymentDue: v })} />
+                      </div>
+                      <div>
+                        <Label>Remind before (days)</Label>
+                        <Input type="number" value={state.alerts.remindBefore} onChange={(e) => updateAlerts({ remindBefore: Number(e.target.value || 0) })} />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Communication Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span>Email Notifications</span>
+                        <Switch checked={state.comms.email} onCheckedChange={(v) => updateComms({ email: v })} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>SMS Notifications</span>
+                        <Switch checked={state.comms.sms} onCheckedChange={(v) => updateComms({ sms: v })} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>WhatsApp Notifications</span>
+                        <Switch checked={state.comms.whatsapp} onCheckedChange={(v) => updateComms({ whatsapp: v })} />
+                      </div>
+                      <div>
+                        <Label>Notification Email</Label>
+                        <Input value={state.comms.notifyEmail} onChange={(e) => updateComms({ notifyEmail: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label>Notification Phone</Label>
+                        <Input value={state.comms.notifyPhone} onChange={(e) => updateComms({ notifyPhone: e.target.value })} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Theme */}
+              <TabsContent value="theme" className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Theme Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span>Dark Mode</span>
+                        <Switch checked={state.theme.dark} onCheckedChange={(v) => updateTheme({ dark: v })} />
+                      </div>
+                      <div>
+                        <Label>Accent Color</Label>
+                        <div className="flex gap-3 mt-2">
+                          {accentChoices.map((c) => (
+                            <button
+                              key={c}
+                              aria-label={`accent-${c}`}
+                              className="w-7 h-7 rounded-full border-2"
+                              style={{ backgroundColor: c, borderColor: state.theme.accent === c ? "#111827" : "#e5e7eb" }}
+                              onClick={() => updateTheme({ accent: c })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Compact Layout</span>
+                        <Switch checked={state.theme.compact} onCheckedChange={(v) => updateTheme({ compact: v })} />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Display Preferences</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label>Date Format</Label>
+                        <Select value={state.theme.dateFmt} onValueChange={(v) => updateTheme({ dateFmt: v })}>
+                          <SelectTrigger className="mt-2"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="DD-MM-YYYY">DD-MM-YYYY</SelectItem>
+                            <SelectItem value="MM-DD-YYYY">MM-DD-YYYY</SelectItem>
+                            <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Currency Format</Label>
+                        <Select value={state.theme.currencyFmt} onValueChange={(v) => updateTheme({ currencyFmt: v })}>
+                          <SelectTrigger className="mt-2"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="₹ (INR)">₹ (INR)</SelectItem>
+                            <SelectItem value="$ (USD)">$ (USD)</SelectItem>
+                            <SelectItem value="€ (EUR)">€ (EUR)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Number Format</Label>
+                        <Select value={state.theme.numberFmt} onValueChange={(v) => updateTheme({ numberFmt: v })}>
+                          <SelectTrigger className="mt-2"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Indian (1,23,456)">Indian (1,23,456)</SelectItem>
+                            <SelectItem value="International (123,456)">International (123,456)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

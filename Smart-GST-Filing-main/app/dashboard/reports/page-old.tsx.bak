@@ -1,0 +1,470 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import {
+  FileText, BarChart3, Download, Search, Filter, Mail, Printer,
+  TrendingUp, TrendingDown, DollarSign, ShieldCheck, Eye, ChartPie, LineChart, File, ArrowRight
+} from "lucide-react"
+
+type RecentReport = {
+  id: string
+  title: string
+  date: string
+  formats: string[]
+  size: string
+}
+
+export default function SimpleReportsPage() {
+  const [isVisible, setIsVisible] = useState(false)
+
+  // Filters
+  const [reportType, setReportType] = useState<string>("sales")
+  const [fromDate, setFromDate] = useState<string>("2024-11-01")
+  const [toDate, setToDate] = useState<string>("2024-11-30")
+  const [party, setParty] = useState<string>("all")
+
+  // Dynamic recent reports
+  const [recentReports, setRecentReports] = useState<RecentReport[]>([
+    { id: "r1", title: "Sales Report - November 2024", date: "2024-12-01", formats: ["PDF", "Excel"], size: "2.5 MB" },
+    { id: "r2", title: "GSTR-3B - October 2024", date: "2024-11-20", formats: ["Excel"], size: "1.8 MB" },
+    { id: "r3", title: "P&L Statement - Q3 2024", date: "2024-11-15", formats: ["PDF"], size: "3.2 MB" },
+    { id: "r4", title: "Customer Ledger - November 2024", date: "2024-11-10", formats: ["Excel"], size: "2.1 MB" },
+  ])
+
+  useEffect(() => setIsVisible(true), [])
+
+  // Actions
+  const handleExport = (name: string, kind: "CSV" | "PDF" | "XLSX" = "CSV") => {
+    const content = `Report: ${name}\nFrom: ${fromDate}\nTo: ${toDate}\nParty: ${party}`
+    const mime =
+      kind === "PDF" ? "application/pdf" : kind === "XLSX" ? "application/vnd.ms-excel" : "text/csv"
+    const ext = kind === "PDF" ? "pdf" : kind === "XLSX" ? "xlsx" : "csv"
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${name.replace(/\s+/g, "-").toLowerCase()}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const emailReport = () => {
+    alert("Report emailed to your registered address.")
+  }
+
+  const printPage = () => window.print()
+
+  const handleGenerate = () => {
+    const map: Record<string, string> = {
+      sales: "Sales Report",
+      purchases: "Purchase / ITC Report",
+      gstr1: "GSTR-1 Report",
+      gstr2a: "GSTR-2A Report",
+      gstr3b: "GSTR-3B Report",
+      gstr9: "GSTR-9 Report",
+      pnl: "Profit & Loss",
+      bs: "Balance Sheet",
+      ledger: "Customer/Vendor Ledger",
+      expenses: "Expense Summary",
+      loans: "Loan Account Statement",
+    }
+    const title = `${map[reportType]} - ${new Date(fromDate).toLocaleString("en-IN", { month: "long", year: "numeric" })}`
+    const id = `r${Date.now()}`
+    setRecentReports(prev => [{ id, title, date: new Date().toISOString().slice(0, 10), formats: ["PDF", "Excel"], size: "~1.2 MB" }, ...prev])
+  }
+
+  // Mock metrics (could be computed from real data)
+  const metrics = [
+    { title: "Total Sales", value: "₹5,70,000", change: "+12.5% from last month", icon: TrendingUp, color: "text-emerald-600" },
+    { title: "Total Purchases", value: "₹3,85,000", change: "-8.2% from last month", icon: TrendingDown, color: "text-red-600" },
+    { title: "Net Profit", value: "₹85,500", change: "15% profit margin", icon: DollarSign, color: "text-blue-600" },
+    { title: "GST Collected", value: "₹1,20,000", change: "This month", icon: ShieldCheck, color: "text-indigo-600" },
+  ]
+
+  const ledgerRows = [
+    { party: "ABC Enterprises", opening: "₹25,000", sales: "₹1,25,000", received: "₹1,00,000", closing: "₹50,000", status: "Outstanding" },
+    { party: "XYZ Corporation", opening: "₹15,000", sales: "₹85,000", received: "₹90,000", closing: "₹10,000", status: "Outstanding" },
+    { party: "PQR Industries", opening: "₹30,000", sales: "₹95,000", received: "₹80,000", closing: "₹45,000", status: "Outstanding" },
+  ]
+
+  // Interactive charts data + tooltip state
+  const months = ["Aug", "Sep", "Oct", "Nov", "Dec"]
+  const sales = [500000, 680000, 610000, 550000, 480000]
+  const profit = [82000, 91000, 88000, 82500, 83000]
+  const target = [600000, 650000, 600000, 580000, 520000]
+
+  const [barHover, setBarHover] = useState<number | null>(null)
+
+  type Slice = { label: string; value: number; color: string }
+  const pieData: Slice[] = [
+    { label: "IGST", value: 38, color: "#3b82f6" },   // blue
+    { label: "SGST", value: 38, color: "#22c55e" },   // emerald
+    { label: "CGST", value: 21, color: "#f59e0b" },   // amber
+    { label: "CESS", value: 4,  color: "#06b6d4" },   // cyan
+  ]
+  const totalPie = pieData.reduce((s, d) => s + d.value, 0)
+  const [pieTooltip, setPieTooltip] = useState<{ show: boolean; x: number; y: number; text: string }>(
+    { show: false, x: 0, y: 0, text: "" }
+  )
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {/* Animated background (subtle) */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50" />
+        <div className="absolute top-24 left-10 w-16 h-16 bg-blue-500/10 rounded-full animate-bounce" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-48 right-24 w-12 h-12 bg-purple-500/10 rounded-full animate-bounce" style={{ animationDelay: '2s' }} />
+      </div>
+
+      <div className={`relative mx-auto max-w-7xl p-6 space-y-6 transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-3xl shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600" />
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative px-8 py-6 text-white">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+                  Reports & Analytics
+                </h1>
+                <p className="text-blue-100">Generate comprehensive business reports</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" className="bg-white/10 text-white border-white/30 hover:bg-white/20" onClick={emailReport}>
+                  <Mail className="w-4 h-4 mr-2" /> Email Report
+                </Button>
+                <Button variant="outline" className="bg-white/10 text-white border-white/30 hover:bg-white/20" onClick={printPage}>
+                  <Printer className="w-4 h-4 mr-2" /> Print
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Metric cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {metrics.map((m) => (
+            <Card key={m.title} className="bg-white/90 border-0 shadow-lg rounded-2xl">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">{m.title}</p>
+                    <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
+                    <p className="text-xs text-gray-500 mt-1">{m.change}</p>
+                  </div>
+                  <m.icon className={`w-5 h-5 ${m.color} opacity-80`} />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Generate Report */}
+        <Card className="bg-white/90 border-0 shadow-lg rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl text-gray-900">Generate Report</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="md:col-span-3">
+              <p className="text-xs text-gray-500 mb-1">Report Type</p>
+              <Select value={reportType} onValueChange={setReportType}>
+                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Select report" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sales">Sales Report</SelectItem>
+                  <SelectItem value="purchases">Purchase / ITC Report</SelectItem>
+                  <SelectItem value="gstr1">GSTR-1 Report</SelectItem>
+                  <SelectItem value="gstr2a">GSTR-2A Report</SelectItem>
+                  <SelectItem value="gstr3b">GSTR-3B Report</SelectItem>
+                  <SelectItem value="gstr9">GSTR-9 Report</SelectItem>
+                  <SelectItem value="pnl">Profit & Loss</SelectItem>
+                  <SelectItem value="bs">Balance Sheet</SelectItem>
+                  <SelectItem value="ledger">Customer/Vendor Ledger</SelectItem>
+                  <SelectItem value="expenses">Expense Summary</SelectItem>
+                  <SelectItem value="loans">Loan Account Statement</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-gray-500 mb-1">From Date</p>
+              <Input className="h-11 rounded-xl" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-gray-500 mb-1">To Date</p>
+              <Input className="h-11 rounded-xl" type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+            <div className="md:col-span-3">
+              <p className="text-xs text-gray-500 mb-1">Party (Optional)</p>
+              <Select value={party} onValueChange={setParty}>
+                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="All Parties" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  <SelectItem value="abc">ABC Enterprises</SelectItem>
+                  <SelectItem value="xyz">XYZ Corporation</SelectItem>
+                  <SelectItem value="pqr">PQR Industries</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-2 flex items-end">
+              <Button className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600" onClick={handleGenerate}>
+                <BarChart3 className="w-4 h-4 mr-2" /> Generate
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Charts Row (interactive) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sales & Profit Trend (interactive) */}
+          <Card className="bg-white/90 border-0 shadow-lg rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+                <LineChart className="w-5 h-5 text-blue-600" /> Sales & Profit Trend
+              </CardTitle>
+              <p className="text-xs text-gray-500">Monthly sales and profit analysis</p>
+            </CardHeader>
+            <CardContent>
+              <div className="relative">
+                {/* simple y-axis labels look (cosmetic) */}
+                <div className="absolute left-0 top-0 bottom-0 w-10 text-[10px] text-gray-400 flex flex-col justify-between py-2">
+                  <span>00000</span>
+                  <span>50000</span>
+                  <span>100000</span>
+                  <span>150000</span>
+                </div>
+
+                <div className="ml-10 h-56 grid grid-cols-5 items-end gap-6">
+                  {months.map((m, i) => {
+                    const salesPct = Math.min(1, sales[i] / Math.max(...sales))
+                    const profitPct = Math.min(1, profit[i] / Math.max(...profit))
+                    const targetPct = Math.min(1, target[i] / Math.max(...target))
+                    return (
+                      <div
+                        key={m}
+                        className="relative space-y-1"
+                        onMouseEnter={() => setBarHover(i)}
+                        onMouseLeave={() => setBarHover(null)}
+                      >
+                        <div className="h-40 w-full bg-gray-100 rounded-md flex items-end p-1 gap-1">
+                          {/* sales bar */}
+                          <div className="w-1/3 bg-blue-500 rounded" style={{ height: `${salesPct * 100}%` }} />
+                          {/* profit bar */}
+                          <div className="w-1/3 bg-emerald-500 rounded" style={{ height: `${profitPct * 100}%` }} />
+                          {/* target bar */}
+                          <div className="w-1/3 bg-gray-400/70 rounded" style={{ height: `${targetPct * 100}%` }} />
+                        </div>
+                        <p className="text-xs text-center text-gray-600">{m}</p>
+
+                        {/* Tooltip */}
+                        {barHover === i && (
+                          <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full bg-white border border-gray-200 shadow-lg rounded-md px-3 py-2 text-xs">
+                            <div className="font-semibold text-gray-900">{m}</div>
+                            <div className="text-emerald-600">Profit : {profit[i].toLocaleString()}</div>
+                            <div className="text-blue-600">Sales : {sales[i].toLocaleString()}</div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* GST Collection Breakdown (interactive pie) */}
+          <Card className="bg-white/90 border-0 shadow-lg rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+                <ChartPie className="w-5 h-5 text-indigo-600" /> GST Collection Breakdown
+              </CardTitle>
+              <p className="text-xs text-gray-500">Tax collection by type</p>
+            </CardHeader>
+            <CardContent>
+              <div className="relative flex items-center justify-center h-56">
+                <svg
+                  width="260"
+                  height="220"
+                  viewBox="0 0 260 220"
+                  onMouseLeave={() => setPieTooltip({ show: false, x: 0, y: 0, text: "" })}
+                  className="overflow-visible"
+                >
+                  {/* Draw slices */}
+                  {(() => {
+                    let startAngle = -Math.PI / 2 // start at top
+                    const cx = 130, cy = 110, r = 70
+                    return pieData.map((d, idx) => {
+                      const angle = (d.value / totalPie) * Math.PI * 2
+                      const endAngle = startAngle + angle
+                      const largeArc = angle > Math.PI ? 1 : 0
+                      const x1 = cx + r * Math.cos(startAngle)
+                      const y1 = cy + r * Math.sin(startAngle)
+                      const x2 = cx + r * Math.cos(endAngle)
+                      const y2 = cy + r * Math.sin(endAngle)
+
+                      const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+                      const mid = startAngle + angle / 2
+                      const lx = cx + (r + 16) * Math.cos(mid)
+                      const ly = cy + (r + 16) * Math.sin(mid)
+
+                      const thisStart = startAngle
+                      startAngle = endAngle
+
+                      return (
+                        <g key={idx}>
+                          <path
+                            d={path}
+                            fill={d.color}
+                            className="cursor-pointer"
+                            onMouseMove={(e) => {
+                              const { offsetX, offsetY } = e.nativeEvent as any
+                              setPieTooltip({ show: true, x: offsetX + 12, y: offsetY - 12, text: `${d.label}: ${d.value}%` })
+                            }}
+                          />
+                          {/* percentage labels around the pie, matching screenshot */}
+                          <text x={lx} y={ly} fontSize="11" textAnchor="middle" alignmentBaseline="middle" fill={d.color}>
+                            {idx} {d.value}%
+                          </text>
+                        </g>
+                      )
+                    })
+                  })()}
+                  {/* inner circle to create donut look (optional) */}
+                  <circle cx="130" cy="110" r="35" fill="white"></circle>
+                </svg>
+
+                {/* Tooltip */}
+                {pieTooltip.show && (
+                  <div
+                    className="pointer-events-none absolute bg-white border border-gray-200 text-xs rounded-md shadow px-2 py-1"
+                    style={{ left: pieTooltip.x, top: pieTooltip.y }}
+                  >
+                    {pieTooltip.text}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Customer Ledger Summary */}
+        <Card className="bg-white/90 border-0 shadow-lg rounded-2xl">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg text-gray-900">Customer Ledger Summary</CardTitle>
+                <p className="text-xs text-gray-500">Party-wise outstanding and transaction summary</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => handleExport("Customer-Ledger", "PDF")}><Download className="w-4 h-4 mr-2" /> Export PDF</Button>
+                <Button variant="outline" onClick={() => handleExport("Customer-Ledger", "XLSX")}><Download className="w-4 h-4 mr-2" /> Export Excel</Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead>Party Name</TableHead>
+                    <TableHead>Opening Balance</TableHead>
+                    <TableHead>Total Sales</TableHead>
+                    <TableHead>Payments Received</TableHead>
+                    <TableHead>Closing Balance</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ledgerRows.map((r) => (
+                    <TableRow key={r.party} className="hover:bg-gray-50">
+                      <TableCell>{r.party}</TableCell>
+                      <TableCell>{r.opening}</TableCell>
+                      <TableCell>{r.sales}</TableCell>
+                      <TableCell>{r.received}</TableCell>
+                      <TableCell>{r.closing}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200">Outstanding</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Report Catalog */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[
+            { title: "Sales Report", desc: "Detailed sales analysis and trends", icon: LineChart, key: "sales" },
+            { title: "Purchase / ITC Report", desc: "Purchase transactions and ITC claims", icon: BarChart3, key: "purchases" },
+            { title: "GSTR-1 Report", desc: "Outward supplies summary", icon: FileText, key: "gstr1" },
+            { title: "GSTR-2A Report", desc: "Inward supplies summary", icon: FileText, key: "gstr2a" },
+            { title: "GSTR-3B Report", desc: "Monthly return summary", icon: FileText, key: "gstr3b" },
+            { title: "GSTR-9 Report", desc: "Annual return summary", icon: FileText, key: "gstr9" },
+            { title: "Profit & Loss", desc: "P&L statement for selected period", icon: DollarSign, key: "pnl" },
+            { title: "Balance Sheet", desc: "Financial position statement", icon: BarChart3, key: "bs" },
+            { title: "Customer/Vendor Ledger", desc: "Party-wise transaction summary", icon: File, key: "ledger" },
+            { title: "Expense Summary", desc: "Category-wise expense analysis", icon: DollarSign, key: "expenses" },
+            { title: "Loan Account Statement", desc: "Loan EMI and balance tracking", icon: FileText, key: "loans" },
+          ].map((r) => (
+            <Card key={r.title} className="bg-white/90 border-0 shadow-lg rounded-2xl">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <r.icon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{r.title}</h3>
+                    <p className="text-sm text-gray-600">{r.desc}</p>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <Button variant="outline" onClick={() => alert(`Preview: ${r.title}`)}>
+                        <Eye className="w-4 h-4 mr-2" /> View
+                      </Button>
+                      <Button variant="outline" onClick={() => handleExport(r.title, "XLSX")}>
+                        <Download className="w-4 h-4 mr-2" /> Export
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Recent Reports */}
+        <Card className="bg-white/90 border-0 shadow-lg rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg text-gray-900">Recent Reports</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {recentReports.map(r => (
+              <div key={r.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-200 bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 rounded-md">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{r.title}</p>
+                    <p className="text-xs text-gray-500">Generated on {r.date} • {r.formats.join(" + ")} • {r.size}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => alert(`Open: ${r.title}`)}>
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleExport(r.title, "XLSX")}>
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

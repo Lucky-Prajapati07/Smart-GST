@@ -1,0 +1,510 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useUser } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { gstFilingApi } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
+import { 
+  Plus, Upload, Download, FileText, AlertCircle, CheckCircle, Clock, Send, Eye, Edit, Loader2, DollarSign, BarChart3
+} from "lucide-react"
+
+type GSTFiling = {
+  id: number
+  userId: string
+  filingPeriod: string
+  filingType: string
+  totalSales: string
+  totalPurchases: string
+  igst: string
+  cgst: string
+  sgst: string
+  cess: string
+  itcAvailable: string
+  taxLiability: string
+  taxPaid: string | null
+  status: string
+  dueDate: string
+  filedDate: string | null
+  arn: string | null
+  calculationData: any
+}
+
+export default function GSTFilingPage() {
+  const { user } = useUser()
+  const { toast } = useToast()
+  const [isVisible, setIsVisible] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [filings, setFilings] = useState<GSTFiling[]>([])
+  const [selectedFiling, setSelectedFiling] = useState<GSTFiling | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  
+  // New filing form
+  const [newFilingForm, setNewFilingForm] = useState({
+    filingType: '',
+    filingPeriod: '',
+    dueDate: ''
+  })
+
+  useEffect(() => {
+    setIsVisible(true)
+    if (user?.id) {
+      loadFilings()
+    }
+  }, [user?.id])
+
+  const loadFilings = async () => {
+    if (!user?.id) return
+    
+    try {
+      setLoading(true)
+      const data = await gstFilingApi.getAll(user.id)
+      setFilings(data)
+    } catch (error) {
+      console.error('Error loading filings:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load GST filings. Please ensure the backend is running.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCalculateGST = async (filing: GSTFiling) => {
+    try {
+      const calculated = await gstFilingApi.calculate(user!.id, filing.filingPeriod, filing.filingType)
+      toast({
+        title: "GST Calculated",
+        description: `Tax Liability: ₹${parseFloat(calculated.taxLiability).toLocaleString()}`,
+      })
+      loadFilings()
+    } catch (error) {
+      console.error('Error calculating GST:', error)
+      toast({
+        title: "Error",
+        description: "Failed to calculate GST. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCreateFiling = async () => {
+    if (!user?.id || !newFilingForm.filingType || !newFilingForm.filingPeriod) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await gstFilingApi.create({
+        userId: user.id,
+        filingPeriod: newFilingForm.filingPeriod,
+        filingType: newFilingForm.filingType,
+        dueDate: newFilingForm.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      })
+      
+      toast({
+        title: "Success",
+        description: "GST filing created successfully",
+      })
+      
+      setIsDialogOpen(false)
+      setNewFilingForm({ filingType: '', filingPeriod: '', dueDate: '' })
+      loadFilings()
+    } catch (error) {
+      console.error('Error creating filing:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create filing. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleViewFiling = (filing: GSTFiling) => {
+    setSelectedFiling(filing)
+    setIsViewDialogOpen(true)
+  }
+
+  const handleUpdateStatus = async (id: number, updates: Partial<GSTFiling>) => {
+    try {
+      await gstFilingApi.update(id, updates)
+      toast({
+        title: "Success",
+        description: "Filing updated successfully",
+      })
+      loadFilings()
+    } catch (error) {
+      console.error('Error updating filing:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update filing. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Calculate stats from filings
+  const stats = {
+    totalTaxCollected: filings.reduce((sum, f) => sum + parseFloat(f.taxLiability || '0'), 0),
+    pendingFilings: filings.filter(f => f.status === 'draft' || f.status === 'calculated').length,
+    filedThisMonth: filings.filter(f => {
+      if (!f.filedDate) return false
+      const filedMonth = new Date(f.filedDate).getMonth()
+      const currentMonth = new Date().getMonth()
+      return filedMonth === currentMonth
+    }).length,
+    complianceRate: filings.length > 0 
+      ? Math.round((filings.filter(f => f.status === 'filed' || f.status === 'submitted').length / filings.length) * 100)
+      : 0
+  }
+
+  const upcomingDeadlines = filings
+    .filter(f => new Date(f.dueDate) > new Date() && (f.status === 'draft' || f.status === 'calculated'))
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .slice(0, 3)
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+          <p className="text-lg text-gray-600">Loading GST filings...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <div className={`relative mx-auto max-w-7xl p-6 space-y-8 transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-3xl shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600"></div>
+          <div className="absolute inset-0 bg-black/20"></div>
+          <div className="relative px-8 py-6 text-white">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-2xl backdrop-blur-sm">
+                    <FileText className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl md:text-4xl font-bold">GST Filing</h1>
+                    <p className="text-blue-100 text-lg">Manage your GST returns and compliance</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm px-4 py-2">
+                    {filings.length} Filings
+                  </Badge>
+                  <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-300/30 backdrop-blur-sm px-4 py-2">
+                    Pending: {stats.pendingFilings}
+                  </Badge>
+                </div>
+              </div>
+
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-4 rounded-2xl shadow-lg">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Filing
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New GST Filing</DialogTitle>
+                    <DialogDescription>Create a new GST return filing</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div>
+                      <Label>Filing Type</Label>
+                      <Select value={newFilingForm.filingType} onValueChange={(v) => setNewFilingForm({...newFilingForm, filingType: v})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GSTR1">GSTR-1</SelectItem>
+                          <SelectItem value="GSTR3B">GSTR-3B</SelectItem>
+                          <SelectItem value="GSTR9">GSTR-9 (Annual)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Filing Period (YYYY-MM)</Label>
+                      <Input 
+                        value={newFilingForm.filingPeriod}
+                        onChange={(e) => setNewFilingForm({...newFilingForm, filingPeriod: e.target.value})}
+                        placeholder="2024-01"
+                      />
+                    </div>
+                    <div>
+                      <Label>Due Date</Label>
+                      <Input 
+                        type="date"
+                        value={newFilingForm.dueDate}
+                        onChange={(e) => setNewFilingForm({...newFilingForm, dueDate: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={handleCreateFiling}>Create Filing</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-lg rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-green-500">
+                  <DollarSign className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-600">Total Tax Collected</p>
+                  <p className="text-lg font-bold text-gray-900">₹{stats.totalTaxCollected.toLocaleString()}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-lg rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-yellow-500">
+                  <Clock className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-600">Pending Filings</p>
+                  <p className="text-lg font-bold text-gray-900">{stats.pendingFilings}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-lg rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-blue-500">
+                  <CheckCircle className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-600">Filed This Month</p>
+                  <p className="text-lg font-bold text-gray-900">{stats.filedThisMonth}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-lg rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-purple-500">
+                  <BarChart3 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-600">Compliance Rate</p>
+                  <p className="text-lg font-bold text-gray-900">{stats.complianceRate}%</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Upcoming Deadlines */}
+        {upcomingDeadlines.length > 0 && (
+          <Card className="backdrop-blur-sm bg-white/80 border-white/50 shadow-xl">
+            <CardHeader>
+              <CardTitle className="text-2xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
+                <AlertCircle className="w-6 h-6 text-blue-600" />
+                Upcoming Deadlines
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {upcomingDeadlines.map((filing) => {
+                  const daysLeft = Math.ceil((new Date(filing.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                  return (
+                    <Card key={filing.id} className="backdrop-blur-sm bg-white/50 hover:shadow-lg transition-all">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-medium">{filing.filingType}</h3>
+                            <p className="text-sm text-gray-600">{filing.filingPeriod}</p>
+                            <p className="text-sm text-gray-500">Due: {new Date(filing.dueDate).toLocaleDateString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant={daysLeft <= 7 ? "destructive" : daysLeft <= 15 ? "secondary" : "outline"}>
+                              {daysLeft} days left
+                            </Badge>
+                            <Button 
+                              size="sm" 
+                              className="mt-2"
+                              onClick={() => handleCalculateGST(filing)}
+                            >
+                              Calculate GST
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Filing History */}
+        <Card className="backdrop-blur-sm bg-white/80 border-white/50 shadow-xl">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-2xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  Filing History
+                </CardTitle>
+                <CardDescription>Track all your GST return submissions</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg border bg-white/50 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50/50">
+                    <TableHead>Type</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Filed Date</TableHead>
+                    <TableHead>Tax Liability</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filings.length > 0 ? (
+                    filings.map((filing) => (
+                      <TableRow key={filing.id} className="hover:bg-white/50 transition-colors">
+                        <TableCell><Badge variant="outline">{filing.filingType}</Badge></TableCell>
+                        <TableCell>{filing.filingPeriod}</TableCell>
+                        <TableCell>{new Date(filing.dueDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{filing.filedDate ? new Date(filing.filedDate).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell>₹{parseFloat(filing.taxLiability || '0').toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            filing.status === 'filed' || filing.status === 'submitted' ? 'default' :
+                            filing.status === 'calculated' ? 'secondary' : 'outline'
+                          }>
+                            {filing.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleViewFiling(filing)}>
+                              <Eye className="w-3 h-3" />
+                            </Button>
+                            {filing.status === 'draft' && (
+                              <Button variant="ghost" size="sm" onClick={() => handleCalculateGST(filing)}>
+                                Calculate
+                              </Button>
+                            )}
+                            {filing.status === 'calculated' && (
+                              <Button variant="ghost" size="sm" onClick={() => handleUpdateStatus(filing.id, { status: 'filed', filedDate: new Date().toISOString() })}>
+                                <Send className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        No GST filings yet. Click "New Filing" to get started.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* View Filing Dialog */}
+        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>GST Filing Details</DialogTitle>
+            </DialogHeader>
+            {selectedFiling && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Filing Type</Label>
+                    <p className="font-medium">{selectedFiling.filingType}</p>
+                  </div>
+                  <div>
+                    <Label>Period</Label>
+                    <p className="font-medium">{selectedFiling.filingPeriod}</p>
+                  </div>
+                  <div>
+                    <Label>Total Sales</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.totalSales || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>Total Purchases</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.totalPurchases || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>IGST</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.igst || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>CGST</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.cgst || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>SGST</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.sgst || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>ITC Available</Label>
+                    <p className="font-medium">₹{parseFloat(selectedFiling.itcAvailable || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>Tax Liability</Label>
+                    <p className="font-medium text-xl text-blue-600">₹{parseFloat(selectedFiling.taxLiability || '0').toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <Label>Status</Label>
+                    <Badge>{selectedFiling.status}</Badge>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  )
+}
