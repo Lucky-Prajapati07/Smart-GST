@@ -36,18 +36,13 @@ export class SettingsService {
   }
 
   async updateSettings(userId: string, updateSettingsDto: UpdateSettingsDto) {
-    // Check if settings exist
-    const settings = await this.prisma.settings.findUnique({
+    return this.prisma.settings.upsert({
       where: { userId },
-    });
-
-    if (!settings) {
-      throw new NotFoundException(`Settings for user ${userId} not found`);
-    }
-
-    return this.prisma.settings.update({
-      where: { userId },
-      data: updateSettingsDto,
+      update: updateSettingsDto,
+      create: {
+        userId,
+        ...updateSettingsDto,
+      },
     });
   }
 
@@ -71,6 +66,11 @@ export class SettingsService {
         userId,
         invoicePrefix: 'INV',
         dueDays: 30,
+        defaultDocumentTypeCode: 'INV',
+        defaultSupplyTypeCode: 'B2B',
+        defaultIsService: 'N',
+        termsConditions:
+          '1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. may be charged on delayed payment.\n3. Subject to local jurisdiction only.',
         invoiceTemplate: 'standard',
         einvoiceEnabled: false,
         gstr1Alerts: true,

@@ -33,8 +33,22 @@ type Settings = {
   accountNumber: string
   ifsc: string
   branch: string
+  logoUrl: string
   invoicePrefix: string
   dueDays: number
+  defaultDocumentTypeCode: string
+  defaultSupplyTypeCode: string
+  defaultIsService: string
+  supplierLegalName: string
+  supplierAddress: string
+  supplierPlace: string
+  supplierStateCode: string
+  supplierPincode: string
+  dispatchFromName: string
+  dispatchFromAddress: string
+  dispatchFromPlace: string
+  dispatchFromPincode: string
+  termsConditions: string
   einvoiceEnabled: boolean
   gstr1Alerts: boolean
   gstr3bAlerts: boolean
@@ -52,6 +66,9 @@ const indianStates = [
   "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
   "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
 ]
+
+const DEFAULT_TERMS =
+  "1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. may be charged on delayed payment.\n3. Subject to local jurisdiction only."
 
 export default function SettingsPage() {
   const { user } = useUser()
@@ -78,8 +95,22 @@ export default function SettingsPage() {
     accountNumber: '',
     ifsc: '',
     branch: '',
+    logoUrl: '',
     invoicePrefix: 'INV',
     dueDays: 30,
+    defaultDocumentTypeCode: 'INV',
+    defaultSupplyTypeCode: 'B2B',
+    defaultIsService: 'N',
+    supplierLegalName: '',
+    supplierAddress: '',
+    supplierPlace: '',
+    supplierStateCode: '',
+    supplierPincode: '',
+    dispatchFromName: '',
+    dispatchFromAddress: '',
+    dispatchFromPlace: '',
+    dispatchFromPincode: '',
+    termsConditions: DEFAULT_TERMS,
     einvoiceEnabled: false,
     gstr1Alerts: true,
     gstr3bAlerts: true,
@@ -127,8 +158,22 @@ export default function SettingsPage() {
           accountNumber: settingsData.accountNumber || '',
           ifsc: settingsData.ifsc || '',
           branch: settingsData.branch || '',
+          logoUrl: settingsData.logoUrl || '',
           invoicePrefix: settingsData.invoicePrefix || 'INV',
           dueDays: settingsData.dueDays || 30,
+          defaultDocumentTypeCode: settingsData.defaultDocumentTypeCode || 'INV',
+          defaultSupplyTypeCode: settingsData.defaultSupplyTypeCode || 'B2B',
+          defaultIsService: settingsData.defaultIsService || 'N',
+          supplierLegalName: settingsData.supplierLegalName || business.businessName || '',
+          supplierAddress: settingsData.supplierAddress || business.address || '',
+          supplierPlace: settingsData.supplierPlace || business.city || '',
+          supplierStateCode: settingsData.supplierStateCode || '',
+          supplierPincode: settingsData.supplierPincode || business.pincode || '',
+          dispatchFromName: settingsData.dispatchFromName || business.businessName || '',
+          dispatchFromAddress: settingsData.dispatchFromAddress || business.address || '',
+          dispatchFromPlace: settingsData.dispatchFromPlace || business.city || '',
+          dispatchFromPincode: settingsData.dispatchFromPincode || business.pincode || '',
+          termsConditions: settingsData.termsConditions || DEFAULT_TERMS,
           einvoiceEnabled: settingsData.einvoiceEnabled || false,
           gstr1Alerts: settingsData.gstr1Alerts || true,
           gstr3bAlerts: settingsData.gstr3bAlerts || true,
@@ -198,8 +243,22 @@ export default function SettingsPage() {
         accountNumber: settings.accountNumber,
         ifsc: settings.ifsc,
         branch: settings.branch,
+        logoUrl: settings.logoUrl,
         invoicePrefix: settings.invoicePrefix,
         dueDays: settings.dueDays,
+        defaultDocumentTypeCode: settings.defaultDocumentTypeCode,
+        defaultSupplyTypeCode: settings.defaultSupplyTypeCode,
+        defaultIsService: settings.defaultIsService,
+        supplierLegalName: settings.supplierLegalName,
+        supplierAddress: settings.supplierAddress,
+        supplierPlace: settings.supplierPlace,
+        supplierStateCode: settings.supplierStateCode,
+        supplierPincode: settings.supplierPincode,
+        dispatchFromName: settings.dispatchFromName,
+        dispatchFromAddress: settings.dispatchFromAddress,
+        dispatchFromPlace: settings.dispatchFromPlace,
+        dispatchFromPincode: settings.dispatchFromPincode,
+        termsConditions: settings.termsConditions,
         einvoiceEnabled: settings.einvoiceEnabled,
         gstr1Alerts: settings.gstr1Alerts,
         gstr3bAlerts: settings.gstr3bAlerts,
@@ -231,6 +290,74 @@ export default function SettingsPage() {
 
   const updateSetting = (key: keyof Settings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const compressImageToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file)
+      const image = new window.Image()
+
+      image.onload = () => {
+        const maxWidth = 800
+        const scale = Math.min(1, maxWidth / image.width)
+        const canvas = document.createElement("canvas")
+
+        canvas.width = Math.max(1, Math.round(image.width * scale))
+        canvas.height = Math.max(1, Math.round(image.height * scale))
+
+        const ctx = canvas.getContext("2d")
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl)
+          reject(new Error("Unable to process image"))
+          return
+        }
+
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+        const compressed = canvas.toDataURL("image/jpeg", 0.8)
+        URL.revokeObjectURL(objectUrl)
+        resolve(compressed)
+      }
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error("Failed to read uploaded image"))
+      }
+
+      image.src = objectUrl
+    })
+  }
+
+  const handleLogoUpload = async (file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file",
+        description: "Please upload an image file for the invoice logo.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload an image smaller than 10MB.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file)
+      updateSetting("logoUrl", compressedDataUrl)
+    } catch (error) {
+      console.error("Error processing logo:", error)
+      toast({
+        title: "Upload failed",
+        description: "Could not process the selected image.",
+        variant: "destructive",
+      })
+    }
   }
 
   if (loading) {
@@ -587,6 +714,112 @@ export default function SettingsPage() {
                         max={365}
                       />
                       <p className="text-xs text-gray-500 mt-1">Days after invoice date</p>
+                    </div>
+                    <div>
+                      <Label>Default Document Type</Label>
+                      <Select value={settings.defaultDocumentTypeCode} onValueChange={(v) => updateSetting('defaultDocumentTypeCode', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select document type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INV">INV - Invoice</SelectItem>
+                          <SelectItem value="CRN">CRN - Credit Note</SelectItem>
+                          <SelectItem value="DBN">DBN - Debit Note</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Default Supply Type Code</Label>
+                      <Select value={settings.defaultSupplyTypeCode} onValueChange={(v) => updateSetting('defaultSupplyTypeCode', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select supply type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="B2B">B2B</SelectItem>
+                          <SelectItem value="B2C">B2C</SelectItem>
+                          <SelectItem value="SEZWP">SEZWP</SelectItem>
+                          <SelectItem value="SEZWOP">SEZWOP</SelectItem>
+                          <SelectItem value="EXPWP">EXPWP</SelectItem>
+                          <SelectItem value="EXPWOP">EXPWOP</SelectItem>
+                          <SelectItem value="DEXP">DEXP</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Default Is Service</Label>
+                      <Select value={settings.defaultIsService} onValueChange={(v) => updateSetting('defaultIsService', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="N">N - Goods</SelectItem>
+                          <SelectItem value="Y">Y - Service</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Invoice Logo (applies to all bills)</Label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleLogoUpload(e.target.files?.[0])}
+                        className="cursor-pointer"
+                      />
+                      {settings.logoUrl ? (
+                        <div className="mt-3 flex items-center gap-4 rounded-lg border p-3">
+                          <img src={settings.logoUrl} alt="Invoice logo preview" className="h-16 w-16 rounded object-contain border" />
+                          <Button type="button" variant="outline" onClick={() => updateSetting("logoUrl", "")}>Remove Logo</Button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-2">Upload once here and the same logo will print on every invoice PDF.</p>
+                      )}
+                    </div>
+                    <div className="md:col-span-2 rounded-lg border border-gray-200 p-3 bg-white">
+                      <Label htmlFor="termsConditions">Terms and Conditions (for all invoices)</Label>
+                      <Textarea
+                        id="termsConditions"
+                        value={settings.termsConditions}
+                        onChange={(e) => updateSetting('termsConditions', e.target.value)}
+                        rows={4}
+                        className="min-h-28 mt-2"
+                        placeholder={"1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. may be charged on delayed payment.\n3. Subject to local jurisdiction only."}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Supplier Legal Name</Label>
+                      <Input value={settings.supplierLegalName} onChange={(e) => updateSetting('supplierLegalName', e.target.value)} placeholder="Legal name as per PAN" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Supplier Address</Label>
+                      <Textarea value={settings.supplierAddress} onChange={(e) => updateSetting('supplierAddress', e.target.value)} rows={2} placeholder="Building/Street/Locality" />
+                    </div>
+                    <div>
+                      <Label>Supplier Place</Label>
+                      <Input value={settings.supplierPlace} onChange={(e) => updateSetting('supplierPlace', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Supplier State Code</Label>
+                      <Input value={settings.supplierStateCode} onChange={(e) => updateSetting('supplierStateCode', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Supplier Pincode</Label>
+                      <Input value={settings.supplierPincode} onChange={(e) => updateSetting('supplierPincode', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Dispatch From Name</Label>
+                      <Input value={settings.dispatchFromName} onChange={(e) => updateSetting('dispatchFromName', e.target.value)} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Dispatch From Address</Label>
+                      <Textarea value={settings.dispatchFromAddress} onChange={(e) => updateSetting('dispatchFromAddress', e.target.value)} rows={2} />
+                    </div>
+                    <div>
+                      <Label>Dispatch From Place</Label>
+                      <Input value={settings.dispatchFromPlace} onChange={(e) => updateSetting('dispatchFromPlace', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Dispatch From Pincode</Label>
+                      <Input value={settings.dispatchFromPincode} onChange={(e) => updateSetting('dispatchFromPincode', e.target.value)} />
                     </div>
                   </div>
                 </div>

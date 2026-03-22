@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Backend API base URL - use environment variable or default to port 3003
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+// Backend API base URL - use environment variable or default to backend port 3001
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -40,13 +40,23 @@ apiClient.interceptors.response.use(
 export interface Client {
   id?: number;
   name: string;
+  legalName?: string;
   gstin: string;
   phoneNumber: string;
   email?: string;
+  contactPerson?: string;
   clientType: string;
   creditLimit?: number;
+  address?: string;
+  place?: string;
+  stateCode?: string;
+  pincode?: string;
   billingAddress?: string;
   shippingAddress?: string;
+  shippingGstin?: string;
+  shippingState?: string;
+  shippingStateCode?: string;
+  shippingPincode?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -54,15 +64,36 @@ export interface Client {
 export interface ClientResponse {
   id: number;
   name: string;
+  legalName?: string;
   gstin: string;
   phoneNumber: string;
   email?: string;
+  contactPerson?: string;
   clientType: string;
   creditLimit?: number;
+  address?: string;
+  place?: string;
+  stateCode?: string;
+  pincode?: string;
   billingAddress?: string;
   shippingAddress?: string;
+  shippingGstin?: string;
+  shippingState?: string;
+  shippingStateCode?: string;
+  shippingPincode?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface InvoiceLineItem {
+  id?: number;
+  itemName: string;
+  hsnCode: string;
+  quantity: number;
+  price: number;
+  discount: number;
+  taxRate: number;
+  amount: number;
 }
 
 // Client API functions
@@ -243,9 +274,41 @@ export interface Invoice {
   invoiceNumber: string;
   invoiceDate: string;
   dueDate: string;
+  documentTypeCode?: string;
+  documentDate?: string;
+  precedingInvoiceReference?: string;
+  precedingInvoiceDate?: string;
   invoiceType: string;
+  supplyTypeCode?: string;
+  isService?: string;
+  supplierLegalName?: string;
+  supplierAddress?: string;
+  supplierPlace?: string;
+  supplierStateCode?: string;
+  supplierPincode?: string;
   party: string;
   partyGstin: string;
+  recipientLegalName?: string;
+  recipientAddress?: string;
+  recipientStateCode?: string;
+  placeOfSupplyStateCode?: string;
+  recipientPincode?: string;
+  recipientPlace?: string;
+  irn?: string;
+  shippingToGstin?: string;
+  shippingToState?: string;
+  shippingToStateCode?: string;
+  shippingToPincode?: string;
+  dispatchFromName?: string;
+  dispatchFromAddress?: string;
+  dispatchFromPlace?: string;
+  dispatchFromPincode?: string;
+  items?: InvoiceLineItem[];
+  assessableValue?: string;
+  gstRate?: string;
+  igstValue?: string;
+  cgstValue?: string;
+  sgstValue?: string;
   amount?: string;
   ewayBillNumber?: string;
   transportMode?: string;
@@ -260,9 +323,41 @@ export interface InvoiceResponse {
   invoiceNumber: string;
   invoiceDate: Date;
   dueDate: Date;
+  documentTypeCode?: string;
+  documentDate?: Date;
+  precedingInvoiceReference?: string;
+  precedingInvoiceDate?: Date;
   invoiceType: string;
+  supplyTypeCode?: string;
+  isService?: string;
+  supplierLegalName?: string;
+  supplierAddress?: string;
+  supplierPlace?: string;
+  supplierStateCode?: string;
+  supplierPincode?: string;
   party: string;
   partyGstin: string;
+  recipientLegalName?: string;
+  recipientAddress?: string;
+  recipientStateCode?: string;
+  placeOfSupplyStateCode?: string;
+  recipientPincode?: string;
+  recipientPlace?: string;
+  irn?: string;
+  shippingToGstin?: string;
+  shippingToState?: string;
+  shippingToStateCode?: string;
+  shippingToPincode?: string;
+  dispatchFromName?: string;
+  dispatchFromAddress?: string;
+  dispatchFromPlace?: string;
+  dispatchFromPincode?: string;
+  items?: InvoiceLineItem[];
+  assessableValue?: string;
+  gstRate?: string;
+  igstValue?: string;
+  cgstValue?: string;
+  sgstValue?: string;
   amount?: string | null;
   ewayBillNumber?: string | null;
   transportMode?: string | null;
@@ -393,9 +488,15 @@ export const gstFilingApi = {
     return response.data;
   },
 
+  // Get GST preview metrics for dashboard cards
+  getPreview: async (userId: string) => {
+    const response = await apiClient.get(`/gst-filing/preview?userId=${encodeURIComponent(userId)}`);
+    return response.data;
+  },
+
   // Get filing by ID
-  getById: async (id: number) => {
-    const response = await apiClient.get(`/gst-filing/${id}`);
+  getById: async (id: number, userId: string) => {
+    const response = await apiClient.get(`/gst-filing/${id}?userId=${userId}`);
     return response.data;
   },
 
@@ -412,6 +513,43 @@ export const gstFilingApi = {
       filingPeriod,
       filingType,
     });
+    return response.data;
+  },
+
+  process: async (payload: {
+    userId: string;
+    filingPeriod: string;
+    filingType: string;
+    startDate?: string;
+    endDate?: string;
+    filing_frequency?: string;
+  }) => {
+    const response = await apiClient.post('/gst-filing/process', payload);
+    return response.data;
+  },
+
+  validate: async (id: number, userId: string) => {
+    const response = await apiClient.post(`/gst-filing/${id}/validate`, { userId });
+    return response.data;
+  },
+
+  createPayment: async (id: number, userId: string, reference?: string) => {
+    const response = await apiClient.post(`/gst-filing/${id}/payment`, { userId, reference });
+    return response.data;
+  },
+
+  markPaymentPaid: async (id: number, paymentId: number, userId: string, reference?: string) => {
+    const response = await apiClient.post(`/gst-filing/${id}/payment/${paymentId}/paid`, { userId, reference });
+    return response.data;
+  },
+
+  fileReturn: async (id: number, userId: string) => {
+    const response = await apiClient.post(`/gst-filing/${id}/file`, { userId });
+    return response.data;
+  },
+
+  export: async (id: number, userId: string, format: 'json' | 'excel' | 'pdf' = 'json') => {
+    const response = await apiClient.get(`/gst-filing/${id}/export?userId=${encodeURIComponent(userId)}&format=${format}`);
     return response.data;
   },
 
@@ -471,6 +609,12 @@ export const reportsApi = {
 
 // Dashboard API
 export const dashboardApi = {
+  // Get invoice revenue summary (direct from invoices)
+  getRevenueSummary: async (userId: string) => {
+    const response = await apiClient.get(`/dashboard/revenue/${userId}`);
+    return response.data;
+  },
+
   // Get dashboard stats
   getStats: async (userId: string) => {
     const response = await apiClient.get(`/dashboard/stats/${userId}`);

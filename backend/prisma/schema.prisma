@@ -14,6 +14,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum GstFilingType {
+  GSTR1
+  GSTR3B
+  GSTR9
+}
+
+enum GstFilingStatus {
+  draft
+  validated
+  calculated
+  filed
+  submitted
+}
+
+enum GstPaymentStatus {
+  pending
+  paid
+  failed
+}
+
 model Business {
   id                  Int      @id @default(autoincrement())
   userId              String
@@ -46,13 +66,23 @@ model Clients {
   id          Int      @id @default(autoincrement())
   userId      String
   name        String
+  legalName   String?
   gstin       String
   phoneNumber String
   email       String
+  contactPerson String?
   clientType     String   // e.g., 'Customer', 'Supplier'
   creditLimit Int?     // Optional credit limit for the client
+  address String?
+  place String?
+  stateCode String?
+  pincode String?
   billingAddress String?
   shippingAddress String?
+  shippingGstin String?
+  shippingState String?
+  shippingStateCode String?
+  shippingPincode String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -68,9 +98,41 @@ model Invoices {
   invoiceNumber String
   invoiceDate DateTime
   dueDate     DateTime
+  documentTypeCode String @default("INV")
+  documentDate DateTime?
+  precedingInvoiceReference String?
+  precedingInvoiceDate DateTime?
   invoiceType String   // e.g., 'Sales', 'Purchase'
+  supplyTypeCode String?
+  isService String?
+  supplierLegalName String?
+  supplierAddress String?
+  supplierPlace String?
+  supplierStateCode String?
+  supplierPincode String?
   party String   // Client or Supplier name
   partyGstin String
+  recipientLegalName String?
+  recipientAddress String?
+  recipientStateCode String?
+  placeOfSupplyStateCode String?
+  recipientPincode String?
+  recipientPlace String?
+  irn String?
+  shippingToGstin String?
+  shippingToState String?
+  shippingToStateCode String?
+  shippingToPincode String?
+  dispatchFromName String?
+  dispatchFromAddress String?
+  dispatchFromPlace String?
+  dispatchFromPincode String?
+  items Json?
+  assessableValue String?
+  gstRate String?
+  igstValue String?
+  cgstValue String?
+  sgstValue String?
   amount String?
   ewayBillNumber String?
   transportMode String?
@@ -83,6 +145,7 @@ model Invoices {
   
   @@unique([userId, invoiceNumber])
   @@index([userId])
+  @@index([userId, invoiceDate])
 }
 
 model Expenses {
@@ -105,6 +168,7 @@ model Expenses {
   updatedAt   DateTime @updatedAt
   
   @@index([userId])
+  @@index([userId, date])
 }
 
 model Transactions {
@@ -141,10 +205,22 @@ model Settings {
   logoUrl     String?
   invoicePrefix String?
   dueDays     Int?     @default(30)
+  defaultDocumentTypeCode String? @default("INV")
+  defaultSupplyTypeCode String? @default("B2B")
+  defaultIsService String? @default("N")
+  supplierLegalName String?
+  supplierAddress String?
+  supplierPlace String?
+  supplierStateCode String?
+  supplierPincode String?
+  dispatchFromName String?
+  dispatchFromAddress String?
+  dispatchFromPlace String?
+  dispatchFromPincode String?
   invoiceFooter String?
   invoiceTemplate String? @default("standard")
   einvoiceEnabled Boolean? @default(false)
-  termsConditions String?
+  termsConditions String @default("1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. may be charged on delayed payment.\n3. Subject to local jurisdiction only.")
   gstr1Alerts Boolean? @default(true)
   gstr3bAlerts Boolean? @default(true)
   paymentDueAlerts Boolean? @default(true)
@@ -168,8 +244,8 @@ model GSTFiling {
   id              Int      @id @default(autoincrement())
   userId          String
   filingPeriod    String   // e.g., "2024-01", "Q1-2024"
-  filingType      String   // GSTR1, GSTR3B, etc.
-  status          String   @default("draft") // draft, filed, submitted
+  filingType      GstFilingType
+  status          GstFilingStatus @default(draft) // draft, filed, submitted
   totalSales      Decimal  @default(0) @db.Decimal(15, 2)
   totalPurchases  Decimal  @default(0) @db.Decimal(15, 2)
   igst            Decimal  @default(0) @db.Decimal(15, 2)
@@ -188,6 +264,24 @@ model GSTFiling {
   
   @@unique([userId, filingPeriod, filingType])
   @@index([userId, filingPeriod])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+}
+
+model GSTPayment {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  filingId        Int
+  amount          Decimal  @db.Decimal(15, 2)
+  status          GstPaymentStatus @default(pending)
+  paymentDate     DateTime?
+  reference       String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, filingId])
+  @@index([status])
 }
 
 model Report {
@@ -218,18 +312,4 @@ model DashboardStats {
   categoryExpenses Json?   // Store expense breakdown
   lastUpdated     DateTime @default(now())
   updatedAt       DateTime @updatedAt
-}
-
-model Otp {
-  id         Int      @id @default(autoincrement())
-  identifier String   // Email address
-  otp        String   // 6-digit OTP code
-  purpose    String   @default("signup") // signup, login, reset-password
-  isVerified Boolean  @default(false)
-  attempts   Int      @default(0)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  
-  @@index([identifier, purpose])
-  @@index([expiresAt])
 }

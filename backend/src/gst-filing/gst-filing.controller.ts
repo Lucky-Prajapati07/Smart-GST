@@ -16,6 +16,12 @@ import {
   UpdateGSTFilingDto,
   CalculateGSTDto,
 } from './dto/gst-filing.dto';
+import {
+  ValidateGSTFilingDto,
+  CreateGSTPaymentDto,
+  MarkGSTPaymentPaidDto,
+  FinalizeGSTFilingDto,
+} from './dto/gst-filing.dto';
 
 @Controller('gst-filing')
 export class GstFilingController {
@@ -24,6 +30,16 @@ export class GstFilingController {
   @Get()
   async getAllFilings(@Query('userId') userId: string) {
     return this.gstFilingService.getAllFilings(userId);
+  }
+
+  @Get('preview/:userId')
+  async getPreview(@Param('userId') userId: string) {
+    return this.gstFilingService.getPreviewMetrics(userId);
+  }
+
+  @Get('preview')
+  async getPreviewByQuery(@Query('userId') userId: string) {
+    return this.gstFilingService.getPreviewMetrics(userId);
   }
 
   @Get(':id')
@@ -49,6 +65,58 @@ export class GstFilingController {
   @Post('calculate')
   async calculateGST(@Body() calculateDto: CalculateGSTDto) {
     return this.gstFilingService.calculateGST(calculateDto);
+  }
+
+  @Post('process')
+  async processGST(@Body() calculateDto: CalculateGSTDto) {
+    return this.gstFilingService.calculateGST(calculateDto);
+  }
+
+  @Post(':id/validate')
+  async validateFiling(
+    @Param('id') id: string,
+    @Body() dto: ValidateGSTFilingDto,
+  ) {
+    return this.gstFilingService.validateFiling(parseInt(id, 10), dto.userId);
+  }
+
+  @Post(':id/payment')
+  async createPayment(
+    @Param('id') id: string,
+    @Body() dto: CreateGSTPaymentDto,
+  ) {
+    return this.gstFilingService.createPaymentRecord(parseInt(id, 10), dto.userId, dto.reference);
+  }
+
+  @Post(':id/payment/:paymentId/paid')
+  async markPaymentPaid(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: MarkGSTPaymentPaidDto,
+  ) {
+    return this.gstFilingService.markPaymentPaid(
+      parseInt(id, 10),
+      parseInt(paymentId, 10),
+      dto.userId,
+      dto.reference,
+    );
+  }
+
+  @Post(':id/file')
+  async fileReturn(
+    @Param('id') id: string,
+    @Body() dto: FinalizeGSTFilingDto,
+  ) {
+    return this.gstFilingService.fileReturn(parseInt(id, 10), dto.userId);
+  }
+
+  @Get(':id/export')
+  async exportReturn(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+    @Query('format') format: string,
+  ) {
+    return this.gstFilingService.exportReturn(parseInt(id, 10), userId, format || 'json');
   }
 
   @Put(':id')

@@ -17,7 +17,6 @@ This is a monorepo containing:
 
 ### 🔐 Authentication & Security
 - **Auth0 Integration**: Secure authentication with email/password
-- OTP-based verification system
 - Role-based access control (User & Admin)
 - Session management and JWT tokens
 - Password reset functionality
@@ -270,7 +269,6 @@ The platform uses PostgreSQL with the following main entities:
 - **Report**: Generated reports and analytics
 - **DashboardStats**: Real-time dashboard metrics
 - **Settings**: User preferences and configurations
-- **Otp**: OTP verification for authentication
 
 ### Database Migrations
 
@@ -443,7 +441,6 @@ Smart-GST/
 │   │   ├── reports/             # Report generation
 │   │   ├── dashboard/           # Dashboard stats
 │   │   ├── settings/            # User settings
-│   │   ├── otp/                 # OTP verification
 │   │   └── prisma/              # Prisma service
 │   ├── prisma/
 │   │   ├── schema.prisma        # Database schema

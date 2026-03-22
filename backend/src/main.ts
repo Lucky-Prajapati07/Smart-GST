@@ -1,8 +1,13 @@
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Invoice logo is stored as a base64 data URL, so allow larger JSON payloads.
+  app.use(json({ limit: '5mb' }));
+  app.use(urlencoded({ extended: true, limit: '5mb' }));
   
   // Enable CORS to allow frontend requests
   app.enableCors({

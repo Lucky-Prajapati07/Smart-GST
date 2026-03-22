@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsDateString, IsArray } from 'class-validator';
 
 export class CreateInvoiceDto {
   @IsNotEmpty()
@@ -17,9 +17,53 @@ export class CreateInvoiceDto {
   @IsDateString()
   dueDate: string;
 
+  @IsOptional()
+  @IsString()
+  documentTypeCode?: string;
+
+  @IsOptional()
+  @IsDateString()
+  documentDate?: string;
+
+  @IsOptional()
+  @IsString()
+  precedingInvoiceReference?: string;
+
+  @IsOptional()
+  @IsDateString()
+  precedingInvoiceDate?: string;
+
   @IsNotEmpty()
   @IsString()
   invoiceType: string; // 'Sales', 'Purchase'
+
+  @IsOptional()
+  @IsString()
+  supplyTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  isService?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierLegalName?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPincode?: string;
 
   @IsNotEmpty()
   @IsString()
@@ -28,6 +72,90 @@ export class CreateInvoiceDto {
   @IsNotEmpty()
   @IsString()
   partyGstin: string;
+
+  @IsOptional()
+  @IsString()
+  recipientLegalName?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  placeOfSupplyStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientPincode?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  irn?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingToGstin?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingToState?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingToStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingToPincode?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromName?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPincode?: string;
+
+  @IsOptional()
+  @IsArray()
+  items?: Record<string, unknown>[];
+
+  @IsOptional()
+  @IsString()
+  assessableValue?: string;
+
+  @IsOptional()
+  @IsString()
+  gstRate?: string;
+
+  @IsOptional()
+  @IsString()
+  igstValue?: string;
+
+  @IsOptional()
+  @IsString()
+  cgstValue?: string;
+
+  @IsOptional()
+  @IsString()
+  sgstValue?: string;
 
   @IsOptional()
   @IsString()

@@ -8,24 +8,100 @@ import { InvoiceResponseDto } from './dto/invoice-response.dto';
 export class InvoicesService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createInvoiceDto: CreateInvoiceDto): Promise<InvoiceResponseDto> {
-    try {
-      const invoice = await this.prisma.invoices.create({
-        data: {
-          ...createInvoiceDto,
-          invoiceDate: new Date(createInvoiceDto.invoiceDate),
-          dueDate: new Date(createInvoiceDto.dueDate),
-        },
-      });
-      return invoice;
-    } catch (error) {
-      if (error.code === 'P2002') {
-        // Prisma unique constraint violation
-        const field = error.meta?.target?.[0];
-        throw new ConflictException(`Invoice with this ${field} already exists`);
-      }
-      throw error;
+  private normalizePrefix(prefix?: string | null): string {
+    const cleaned = (prefix ?? 'INV').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return cleaned || 'INV';
+  }
+
+  private extractSequence(invoiceNumber: string, prefix: string): { seq: number; width: number } | null {
+    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = invoiceNumber
+      .trim()
+      .toUpperCase()
+      .match(new RegExp(`^${escapedPrefix}[-/\\s]?(\\d+)$`));
+
+    if (!match) {
+      return null;
     }
+
+    return {
+      seq: Number.parseInt(match[1], 10),
+      width: Math.max(match[1].length, 3),
+    };
+  }
+
+  private async generateNextInvoiceNumber(userId: string): Promise<string> {
+    const settings = await this.prisma.settings.findUnique({
+      where: { userId },
+      select: { invoicePrefix: true },
+    });
+
+    const prefix = this.normalizePrefix(settings?.invoicePrefix);
+
+    const existing = await this.prisma.invoices.findMany({
+      where: { userId },
+      select: { invoiceNumber: true },
+    });
+
+    let maxSeq = 0;
+    let width = 3;
+
+    for (const row of existing) {
+      const parsed = this.extractSequence(row.invoiceNumber, prefix);
+      if (!parsed) {
+        continue;
+      }
+      if (parsed.seq > maxSeq) {
+        maxSeq = parsed.seq;
+      }
+      if (parsed.width > width) {
+        width = parsed.width;
+      }
+    }
+
+    return `${prefix}-${String(maxSeq + 1).padStart(width, '0')}`;
+  }
+
+  async create(createInvoiceDto: CreateInvoiceDto): Promise<InvoiceResponseDto> {
+    const createData: any = {
+      ...createInvoiceDto,
+      invoiceDate: new Date(createInvoiceDto.invoiceDate),
+      dueDate: new Date(createInvoiceDto.dueDate),
+    };
+
+    if (createInvoiceDto.documentDate) {
+      createData.documentDate = new Date(createInvoiceDto.documentDate);
+    }
+
+    if (createInvoiceDto.precedingInvoiceDate) {
+      createData.precedingInvoiceDate = new Date(createInvoiceDto.precedingInvoiceDate);
+    }
+
+    // Always assign a sequence number from invoice history so numbering remains consistent.
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        createData.invoiceNumber = await this.generateNextInvoiceNumber(createInvoiceDto.userId);
+
+        const invoice = await this.prisma.invoices.create({
+          data: createData,
+        });
+
+        return invoice;
+      } catch (error) {
+        if (error.code === 'P2002' && attempt < 3) {
+          continue;
+        }
+
+        if (error.code === 'P2002') {
+          const field = error.meta?.target?.[0];
+          throw new ConflictException(`Invoice with this ${field} already exists`);
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException('Failed to generate a unique sequential invoice number');
   }
 
   async findAll(userId: string): Promise<InvoiceResponseDto[]> {
@@ -136,6 +212,14 @@ export class InvoicesService {
         updateData.dueDate = new Date(updateInvoiceDto.dueDate);
       }
 
+      if (updateInvoiceDto.documentDate) {
+        updateData.documentDate = new Date(updateInvoiceDto.documentDate);
+      }
+
+      if (updateInvoiceDto.precedingInvoiceDate) {
+        updateData.precedingInvoiceDate = new Date(updateInvoiceDto.precedingInvoiceDate);
+      }
+
       const invoice = await this.prisma.invoices.update({
         where: { id },
         data: updateData,
@@ -166,6 +250,14 @@ export class InvoicesService {
       
       if (updateInvoiceDto.dueDate) {
         updateData.dueDate = new Date(updateInvoiceDto.dueDate);
+      }
+
+      if (updateInvoiceDto.documentDate) {
+        updateData.documentDate = new Date(updateInvoiceDto.documentDate);
+      }
+
+      if (updateInvoiceDto.precedingInvoiceDate) {
+        updateData.precedingInvoiceDate = new Date(updateInvoiceDto.precedingInvoiceDate);
       }
 
       const invoice = await this.prisma.invoices.update({

@@ -5,6 +5,33 @@ import { PrismaService } from '../prisma/prisma.service';
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
+  async getRevenueSummary(userId: string) {
+    const invoices = await this.prisma.invoices.findMany({
+      where: { userId },
+      select: {
+        totalAmount: true,
+        amount: true,
+        assessableValue: true,
+        gst: true,
+        igstValue: true,
+        cgstValue: true,
+        sgstValue: true,
+        items: true,
+      },
+    });
+
+    const totalInvoiceAmount = invoices.reduce(
+      (sum, invoice) => sum + this.getInvoiceTotalAmount(invoice),
+      0,
+    );
+
+    return {
+      userId,
+      totalInvoiceAmount,
+      invoiceCount: invoices.length,
+    };
+  }
+
   async getDashboardStats(userId: string) {
     // Try to get cached stats
     let stats = await this.prisma.dashboardStats.findUnique({
@@ -26,66 +53,50 @@ export class DashboardService {
   private async calculateAndUpdateStats(userId: string) {
     // Get current month dates
     const now = new Date();
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
     // Fetch all data
-    const [invoices, expenses, clients, transactions] = await Promise.all([
-      this.prisma.invoices.findMany(),
-      this.prisma.expenses.findMany(),
-      this.prisma.clients.findMany(),
-      this.prisma.transactions.findMany(),
+    const [invoices, expenses, clients, transactions, pendingInvoices, overdueInvoices] = await Promise.all([
+      this.prisma.invoices.findMany({ where: { userId } }),
+      this.prisma.expenses.findMany({ where: { userId } }),
+      this.prisma.clients.findMany({ where: { userId } }),
+      this.prisma.transactions.findMany({ where: { userId } }),
+      this.prisma.invoices.count({
+        where: {
+          userId,
+          status: {
+            equals: 'pending',
+            mode: 'insensitive',
+          },
+        },
+      }),
+      this.prisma.invoices.count({
+        where: {
+          userId,
+          status: {
+            equals: 'pending',
+            mode: 'insensitive',
+          },
+          dueDate: {
+            lt: now,
+          },
+        },
+      }),
     ]);
 
-    // Calculate total revenue (sales invoices)
-    const salesInvoices = invoices.filter(
-      (inv) => inv.invoiceType.toLowerCase() === 'sales',
-    );
-    const totalRevenue = salesInvoices.reduce(
-      (sum, inv) => sum + parseFloat(inv.totalAmount || inv.amount || '0'),
-      0,
-    );
+    // Calculate total revenue from all invoices (sum of totalAmount/amount)
+    const revenueSummary = await this.getRevenueSummary(userId);
+    const totalRevenue = revenueSummary.totalInvoiceAmount;
 
     // Calculate total expenses
     const totalExpenses = expenses.reduce(
-      (sum, exp) => sum + parseFloat(exp.totalAmount || exp.amount || '0'),
+      (sum, exp) => sum + this.parseAmount(exp.totalAmount || exp.amount),
       0,
     );
 
-    // Calculate pending and overdue invoices
-    const pendingInvoices = salesInvoices.filter(
-      (inv) => inv.status?.toLowerCase() === 'pending',
-    ).length;
-
-    const overdueInvoices = salesInvoices.filter((inv) => {
-      if (inv.status?.toLowerCase() !== 'pending') return false;
-      const dueDate = new Date(inv.dueDate);
-      return dueDate < now;
-    }).length;
-
-    // Calculate GST liability (output tax - input tax)
-    const outputTax = salesInvoices.reduce(
-      (sum, inv) => sum + parseFloat(inv.gst || '0'),
-      0,
-    );
-
-    const purchaseInvoices = invoices.filter(
-      (inv) => inv.invoiceType.toLowerCase() === 'purchase',
-    );
-    const purchaseGST = purchaseInvoices.reduce(
-      (sum, inv) => sum + parseFloat(inv.gst || '0'),
-      0,
-    );
-
-    const expenseGST = expenses
-      .filter((exp) => exp.itc === 'yes')
-      .reduce((sum, exp) => sum + parseFloat(exp.gst || '0'), 0);
-
-    const inputTax = purchaseGST + expenseGST;
-    const gstLiability = Math.max(outputTax - inputTax, 0);
+    const gstLiability = await this.resolveGstLiability(userId, invoices, expenses);
 
     // Calculate monthly revenue (last 12 months)
-    const monthlyRevenue = this.calculateMonthlyRevenue(salesInvoices);
+    const monthlyRevenue = this.calculateMonthlyRevenue(invoices);
 
     // Calculate category-wise expenses
     const categoryExpenses = this.calculateCategoryExpenses(expenses);
@@ -114,20 +125,41 @@ export class DashboardService {
   async getRecentActivity(userId: string, limit: number = 10) {
     const [recentInvoices, recentExpenses, recentTransactions] = await Promise.all([
       this.prisma.invoices.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         take: limit,
       }),
       this.prisma.expenses.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         take: limit,
       }),
       this.prisma.transactions.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         take: limit,
       }),
     ]);
 
-    // Combine and sort by date
+    const invoiceItems = recentInvoices.map((inv) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      partyName: inv.party,
+      totalAmount: this.getInvoiceTotalAmount(inv).toString(),
+      status: inv.status || 'Pending',
+      invoiceDate: inv.invoiceDate.toISOString(),
+    }));
+
+    const expenseItems = recentExpenses.map((exp) => ({
+      id: exp.id,
+      title: exp.title,
+      vendor: exp.vendor || '',
+      totalAmount: this.parseAmount(exp.totalAmount || exp.amount).toString(),
+      status: exp.status || 'Pending',
+      date: exp.date.toISOString(),
+    }));
+
+    // Keep combined stream for compatibility/debug.
     const activities = [
       ...recentInvoices.map((inv) => ({
         type: 'invoice',
@@ -148,19 +180,32 @@ export class DashboardService {
 
     activities.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    return activities.slice(0, limit);
+    return {
+      invoices: invoiceItems,
+      expenses: expenseItems,
+      transactions: recentTransactions,
+      activities: activities.slice(0, limit),
+    };
   }
 
   async getTopClients(userId: string, limit: number = 5) {
-    const clients = await this.prisma.clients.findMany();
+    const clients = await this.prisma.clients.findMany({
+      where: { userId },
+    });
     const invoices = await this.prisma.invoices.findMany({
-      where: { invoiceType: 'Sales' },
+      where: {
+        userId,
+        invoiceType: {
+          equals: 'Sales',
+          mode: 'insensitive',
+        },
+      },
     });
 
     const clientStats = clients.map((client) => {
       const clientInvoices = invoices.filter((inv) => inv.party === client.name);
       const totalBusiness = clientInvoices.reduce(
-        (sum, inv) => sum + parseFloat(inv.totalAmount || inv.amount || '0'),
+        (sum, inv) => sum + this.getInvoiceTotalAmount(inv),
         0,
       );
 
@@ -182,6 +227,7 @@ export class DashboardService {
 
     const transactions = await this.prisma.transactions.findMany({
       where: {
+        userId,
         date: { gte: startDate },
       },
       orderBy: { date: 'asc' },
@@ -214,6 +260,7 @@ export class DashboardService {
 
     const upcomingInvoices = await this.prisma.invoices.findMany({
       where: {
+        userId,
         status: 'Pending',
         dueDate: {
           gte: now,
@@ -256,7 +303,7 @@ export class DashboardService {
     invoices.forEach((inv) => {
       const month = new Date(inv.invoiceDate).toISOString().substr(0, 7);
       if (monthlyData.hasOwnProperty(month)) {
-        monthlyData[month] += parseFloat(inv.totalAmount || inv.amount || '0');
+        monthlyData[month] += this.getInvoiceTotalAmount(inv);
       }
     });
 
@@ -271,7 +318,7 @@ export class DashboardService {
       if (!categoryData[category]) {
         categoryData[category] = 0;
       }
-      categoryData[category] += parseFloat(exp.totalAmount || exp.amount || '0');
+      categoryData[category] += this.parseAmount(exp.totalAmount || exp.amount);
     });
 
     return categoryData;
@@ -281,5 +328,162 @@ export class DashboardService {
     const fiveMinutesAgo = new Date();
     fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
     return lastUpdated < fiveMinutesAgo;
+  }
+
+  private parseAmount(value?: string | null): number {
+    if (!value) {
+      return 0;
+    }
+
+    const normalized = String(value).replace(/[^0-9.-]/g, '');
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private getInvoiceTotalAmount(invoice: any): number {
+    const directAmount = this.parseAmount(invoice.totalAmount || invoice.amount);
+    if (directAmount > 0) {
+      return directAmount;
+    }
+
+    const itemsAmount = this.calculateItemsTotal(invoice.items);
+    if (itemsAmount > 0) {
+      return itemsAmount;
+    }
+
+    const assessable = this.parseAmount(invoice.assessableValue);
+    const taxFromFields =
+      this.parseAmount(invoice.gst) ||
+      this.parseAmount(invoice.igstValue) +
+        this.parseAmount(invoice.cgstValue) +
+        this.parseAmount(invoice.sgstValue);
+
+    const derivedAmount = assessable + taxFromFields;
+    return derivedAmount > 0 ? derivedAmount : 0;
+  }
+
+  private calculateItemsTotal(items: unknown): number {
+    if (!Array.isArray(items)) {
+      return 0;
+    }
+
+    return items.reduce((sum: number, item: any) => {
+      if (!item || typeof item !== 'object') {
+        return sum;
+      }
+
+      const itemAmount = Number(item.amount);
+      if (Number.isFinite(itemAmount) && itemAmount > 0) {
+        return sum + itemAmount;
+      }
+
+      const quantity = Number(item.quantity) || 0;
+      const price = Number(item.price) || 0;
+      const discountPct = Number(item.discount) || 0;
+      const taxRatePct = Number(item.taxRate) || 0;
+
+      const baseAmount = quantity * price;
+      const discountAmount = (baseAmount * discountPct) / 100;
+      const taxableAmount = Math.max(baseAmount - discountAmount, 0);
+      const taxAmount = (taxableAmount * taxRatePct) / 100;
+
+      return sum + taxableAmount + taxAmount;
+    }, 0);
+  }
+
+  private async resolveGstLiability(
+    userId: string,
+    invoices: any[],
+    expenses: any[],
+  ): Promise<number> {
+    const latestComputedFiling = await this.prisma.gSTFiling.findFirst({
+      where: {
+        userId,
+        status: {
+          in: ['calculated', 'validated', 'filed', 'submitted'],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (latestComputedFiling) {
+      const fromFiling = this.extractLiabilityFromFiling(latestComputedFiling);
+      if (fromFiling > 0) {
+        return fromFiling;
+      }
+    }
+
+    // Fallback: invoices contribute outward GST, expenses with eligible ITC reduce liability.
+    const outputTax = invoices.reduce(
+      (sum, inv) => sum + this.getInvoiceTaxAmount(inv),
+      0,
+    );
+
+    const eligibleExpenseTax = expenses
+      .filter((exp) => this.isItcEligible(exp.itc))
+      .reduce((sum, exp) => sum + this.parseAmount(exp.gst), 0);
+
+    return this.round2(Math.max(outputTax - eligibleExpenseTax, 0));
+  }
+
+  private extractLiabilityFromFiling(filing: any): number {
+    const calculationData =
+      filing?.calculationData && typeof filing.calculationData === 'object'
+        ? (filing.calculationData as Record<string, any>)
+        : {};
+
+    const totalPayable = this.parseAmount(
+      calculationData?.gstr3b?.net_tax_payable?.total_payable,
+    );
+    if (totalPayable > 0) {
+      return this.round2(totalPayable);
+    }
+
+    const summaryNetPayable = this.parseAmount(calculationData?.summary?.net_payable);
+    if (summaryNetPayable > 0) {
+      return this.round2(summaryNetPayable);
+    }
+
+    const directTaxLiability = this.parseAmount(filing?.taxLiability?.toString());
+    return this.round2(Math.max(directTaxLiability, 0));
+  }
+
+  private getInvoiceTaxAmount(invoice: any): number {
+    const directTax = this.parseAmount(invoice.gst);
+    if (directTax > 0) {
+      return directTax;
+    }
+
+    const componentTax =
+      this.parseAmount(invoice.igstValue) +
+      this.parseAmount(invoice.cgstValue) +
+      this.parseAmount(invoice.sgstValue);
+
+    if (componentTax > 0) {
+      return componentTax;
+    }
+
+    const totalAmount = this.getInvoiceTotalAmount(invoice);
+    const taxableAmount =
+      this.parseAmount(invoice.assessableValue) || this.parseAmount(invoice.amount);
+
+    if (totalAmount > taxableAmount && taxableAmount > 0) {
+      return this.round2(totalAmount - taxableAmount);
+    }
+
+    return 0;
+  }
+
+  private isItcEligible(value: unknown): boolean {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return true;
+    }
+
+    return ['yes', 'y', 'true', '1', 'eligible', 'claimed'].includes(normalized);
+  }
+
+  private round2(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 }

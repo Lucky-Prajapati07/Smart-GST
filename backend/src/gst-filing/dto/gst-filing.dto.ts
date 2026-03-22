@@ -8,6 +8,7 @@ export enum FilingType {
 
 export enum FilingStatus {
   DRAFT = 'draft',
+  VALIDATED = 'validated',
   CALCULATED = 'calculated',
   FILED = 'filed',
   SUBMITTED = 'submitted',
@@ -20,11 +21,12 @@ export class CreateGSTFilingDto {
   @IsString()
   filingPeriod: string;
 
-  @IsEnum(FilingType)
+  @IsString()
   filingType: string;
 
+  @IsOptional()
   @IsDateString()
-  dueDate: string;
+  dueDate?: string;
 }
 
 export class UpdateGSTFilingDto {
@@ -84,9 +86,63 @@ export class CalculateGSTDto {
   @IsString()
   userId: string;
 
+  @IsOptional()
   @IsString()
-  filingPeriod: string;
+  filingPeriod?: string;
 
-  @IsEnum(FilingType)
-  filingType: string;
+  @IsOptional()
+  @IsString()
+  filingType?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsDateString()
+  end_date?: string;
+
+  @IsOptional()
+  @IsString()
+  filingFrequency?: string;
+
+  @IsOptional()
+  @IsString()
+  filing_frequency?: string;
+}
+
+export class ValidateGSTFilingDto {
+  @IsString()
+  userId: string;
+}
+
+export class CreateGSTPaymentDto {
+  @IsString()
+  userId: string;
+
+  @IsOptional()
+  @IsString()
+  reference?: string;
+}
+
+export class MarkGSTPaymentPaidDto {
+  @IsString()
+  userId: string;
+
+  @IsOptional()
+  @IsString()
+  reference?: string;
+}
+
+export class FinalizeGSTFilingDto {
+  @IsString()
+  userId: string;
 }

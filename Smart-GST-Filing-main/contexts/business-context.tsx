@@ -33,15 +33,25 @@ const BusinessContext = createContext<BusinessContextType | undefined>(undefined
 
 const iconColors = ["blue", "purple", "emerald", "orange", "pink", "indigo"]
 
+function formatTurnover(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "N/A"
+  }
+
+  return `₹${value.toLocaleString('en-IN')}`
+}
+
 // Helper function to convert backend Business to frontend Business
-function mapBackendBusiness(backendBusiness: any, index: number): Business {
+function mapBackendBusiness(backendBusiness: any, index: number, turnoverOverride?: number): Business {
   const color = iconColors[index % iconColors.length]
+  const turnoverValue = turnoverOverride ?? backendBusiness.turnover
+
   return {
     id: backendBusiness.id,
     name: backendBusiness.businessName,
     gst: backendBusiness.gstin,
     location: `${backendBusiness.city}, ${backendBusiness.state}`,
-    turnover: backendBusiness.turnover ? `₹${(backendBusiness.turnover / 10000000).toFixed(1)}Cr` : "N/A",
+    turnover: formatTurnover(turnoverValue),
     iconColor: color,
     bgColor: `bg-${color}-100`,
     iconBgColor: `text-${color}-600`,
@@ -71,7 +81,9 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       setIsLoading(true)
       setError(null)
       const businesses = await businessApi.getByUserId(user.sub)
-      const mappedBusinesses = businesses.map(mapBackendBusiness)
+      const mappedBusinesses = businesses.map((business, index) =>
+        mapBackendBusiness(business, index)
+      )
       setBusinessData(mappedBusinesses)
 
       // If no businesses found, only redirect if user is on a protected route

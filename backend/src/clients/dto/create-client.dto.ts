@@ -9,6 +9,10 @@ export class CreateClientDto {
   @IsString()
   name: string;
 
+  @IsOptional()
+  @IsString()
+  legalName?: string;
+
   @IsNotEmpty()
   @IsString()
   gstin: string;
@@ -16,6 +20,10 @@ export class CreateClientDto {
   @IsNotEmpty()
   @IsString()
   phoneNumber: string;
+
+  @IsOptional()
+  @IsString()
+  contactPerson?: string;
 
   @IsNotEmpty()
   @IsEmail()
@@ -32,9 +40,41 @@ export class CreateClientDto {
 
   @IsOptional()
   @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  place?: string;
+
+  @IsOptional()
+  @IsString()
+  stateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  pincode?: string;
+
+  @IsOptional()
+  @IsString()
   billingAddress?: string;
 
   @IsOptional()
   @IsString()
   shippingAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingGstin?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingState?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingPincode?: string;
 }

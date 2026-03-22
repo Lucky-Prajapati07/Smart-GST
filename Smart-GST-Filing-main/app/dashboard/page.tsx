@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { FilePlus, Upload, BarChart2, Bell, MessageSquare, Loader2 } from "lucide-react"
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { useBusiness } from "@/contexts/business-context"
-import { dashboardApi, invoicesApi, gstFilingApi } from "@/lib/api"
+import { dashboardApi, gstFilingApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 type DashboardStats = {
@@ -56,8 +56,14 @@ export default function DashboardPage() {
       setLoading(true)
       
       // Load dashboard stats
-      const statsData = await dashboardApi.getStats(user.sub)
-      setStats(statsData)
+      const [statsData, revenueSummary] = await Promise.all([
+        dashboardApi.refreshStats(user.sub),
+        dashboardApi.getRevenueSummary(user.sub),
+      ])
+      setStats({
+        ...statsData,
+        totalRevenue: Number(revenueSummary?.totalInvoiceAmount || statsData?.totalRevenue || 0),
+      })
       
       // Load recent activity
       const activity = await dashboardApi.getRecentActivity(user.sub, 5)

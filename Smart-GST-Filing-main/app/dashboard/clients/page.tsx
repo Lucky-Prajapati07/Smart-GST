@@ -96,13 +96,23 @@ export default function ClientsPage() {
     setSelectedClient(client);
     setFormData({
       name: client.name,
+      legalName: client.legalName || client.name,
       gstin: client.gstin,
       phoneNumber: client.phoneNumber,
       email: client.email || '',
+      contactPerson: client.contactPerson || '',
       clientType: client.clientType,
       creditLimit: client.creditLimit || 0,
+      address: client.address || '',
+      place: client.place || '',
+      stateCode: client.stateCode || '',
+      pincode: client.pincode || '',
       billingAddress: client.billingAddress || '',
       shippingAddress: client.shippingAddress || '',
+      shippingGstin: client.shippingGstin || '',
+      shippingState: client.shippingState || '',
+      shippingStateCode: client.shippingStateCode || '',
+      shippingPincode: client.shippingPincode || '',
     });
     setIsEditDialogOpen(true);
   };
@@ -329,6 +339,18 @@ export default function ClientsPage() {
                             className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm" 
                           />
                         </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="legalName" className="text-sm font-semibold text-gray-700">
+                            Legal Name
+                          </Label>
+                          <Input
+                            id="legalName"
+                            placeholder="Legal name as per PAN"
+                            value={formData.legalName}
+                            onChange={(e) => updateField('legalName', e.target.value)}
+                            className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm"
+                          />
+                        </div>
                       </div>
 
                       {/* Contact Information */}
@@ -356,6 +378,18 @@ export default function ClientsPage() {
                             value={formData.email}
                             onChange={(e) => updateField('email', e.target.value)}
                             className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm" 
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="contactPerson" className="text-sm font-semibold text-gray-700">
+                            Contact Person
+                          </Label>
+                          <Input
+                            id="contactPerson"
+                            placeholder="Accounts/POC name"
+                            value={formData.contactPerson}
+                            onChange={(e) => updateField('contactPerson', e.target.value)}
+                            className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm"
                           />
                         </div>
                       </div>
@@ -393,6 +427,36 @@ export default function ClientsPage() {
 
                       {/* Address Information */}
                       <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <Label htmlFor="address" className="text-sm font-semibold text-gray-700">
+                              Recipient Address
+                            </Label>
+                            <Textarea
+                              id="address"
+                              placeholder="Building, street, locality"
+                              value={formData.address}
+                              onChange={(e) => updateField('address', e.target.value)}
+                              rows={3}
+                              className="w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 bg-white/70 backdrop-blur-sm resize-none"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-3">
+                              <Label htmlFor="place" className="text-sm font-semibold text-gray-700">Place</Label>
+                              <Input id="place" value={formData.place} onChange={(e) => updateField('place', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label htmlFor="stateCode" className="text-sm font-semibold text-gray-700">State Code</Label>
+                              <Input id="stateCode" value={formData.stateCode} onChange={(e) => updateField('stateCode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                            </div>
+                            <div className="space-y-3 col-span-2">
+                              <Label htmlFor="pincode" className="text-sm font-semibold text-gray-700">Pincode</Label>
+                              <Input id="pincode" value={formData.pincode} onChange={(e) => updateField('pincode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="space-y-3">
                           <Label htmlFor="billingAddress" className="text-sm font-semibold text-gray-700">
                             Billing Address
@@ -418,6 +482,24 @@ export default function ClientsPage() {
                             rows={3}
                             className="w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 bg-white/70 backdrop-blur-sm resize-none"
                           />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <Label htmlFor="shippingGstin" className="text-sm font-semibold text-gray-700">Shipping GSTIN</Label>
+                            <Input id="shippingGstin" value={formData.shippingGstin} onChange={(e) => updateField('shippingGstin', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                          </div>
+                          <div className="space-y-3">
+                            <Label htmlFor="shippingState" className="text-sm font-semibold text-gray-700">Shipping State</Label>
+                            <Input id="shippingState" value={formData.shippingState} onChange={(e) => updateField('shippingState', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                          </div>
+                          <div className="space-y-3">
+                            <Label htmlFor="shippingStateCode" className="text-sm font-semibold text-gray-700">Shipping State Code</Label>
+                            <Input id="shippingStateCode" value={formData.shippingStateCode} onChange={(e) => updateField('shippingStateCode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                          </div>
+                          <div className="space-y-3">
+                            <Label htmlFor="shippingPincode" className="text-sm font-semibold text-gray-700">Shipping Pincode</Label>
+                            <Input id="shippingPincode" value={formData.shippingPincode} onChange={(e) => updateField('shippingPincode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                          </div>
                         </div>
                       </div>
 
@@ -676,6 +758,17 @@ export default function ClientsPage() {
                     className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm" 
                   />
                 </div>
+                <div className="space-y-3">
+                  <Label htmlFor="editLegalName" className="text-sm font-semibold text-gray-700">
+                    Legal Name
+                  </Label>
+                  <Input
+                    id="editLegalName"
+                    value={formData.legalName}
+                    onChange={(e) => updateField('legalName', e.target.value)}
+                    className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -702,6 +795,17 @@ export default function ClientsPage() {
                     value={formData.email}
                     onChange={(e) => updateField('email', e.target.value)}
                     className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm" 
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="editContactPerson" className="text-sm font-semibold text-gray-700">
+                    Contact Person
+                  </Label>
+                  <Input
+                    id="editContactPerson"
+                    value={formData.contactPerson}
+                    onChange={(e) => updateField('contactPerson', e.target.value)}
+                    className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm"
                   />
                 </div>
               </div>
@@ -733,6 +837,46 @@ export default function ClientsPage() {
                     onChange={(e) => updateField('creditLimit', Number(e.target.value) || 0)}
                     className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-12 text-gray-900 bg-white/70 backdrop-blur-sm" 
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="editAddress" className="text-sm font-semibold text-gray-700">Recipient Address</Label>
+                  <Textarea id="editAddress" value={formData.address} onChange={(e) => updateField('address', e.target.value)} rows={3} className="rounded-xl border-gray-300" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <Label htmlFor="editPlace" className="text-sm font-semibold text-gray-700">Place</Label>
+                    <Input id="editPlace" value={formData.place} onChange={(e) => updateField('place', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="editStateCode" className="text-sm font-semibold text-gray-700">State Code</Label>
+                    <Input id="editStateCode" value={formData.stateCode} onChange={(e) => updateField('stateCode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                  </div>
+                  <div className="space-y-3 col-span-2">
+                    <Label htmlFor="editPincode" className="text-sm font-semibold text-gray-700">Pincode</Label>
+                    <Input id="editPincode" value={formData.pincode} onChange={(e) => updateField('pincode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="editShippingGstin" className="text-sm font-semibold text-gray-700">Shipping GSTIN</Label>
+                  <Input id="editShippingGstin" value={formData.shippingGstin} onChange={(e) => updateField('shippingGstin', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="editShippingState" className="text-sm font-semibold text-gray-700">Shipping State</Label>
+                  <Input id="editShippingState" value={formData.shippingState} onChange={(e) => updateField('shippingState', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="editShippingStateCode" className="text-sm font-semibold text-gray-700">Shipping State Code</Label>
+                  <Input id="editShippingStateCode" value={formData.shippingStateCode} onChange={(e) => updateField('shippingStateCode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="editShippingPincode" className="text-sm font-semibold text-gray-700">Shipping Pincode</Label>
+                  <Input id="editShippingPincode" value={formData.shippingPincode} onChange={(e) => updateField('shippingPincode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
                 </div>
               </div>
 

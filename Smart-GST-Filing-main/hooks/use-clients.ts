@@ -241,13 +241,23 @@ export const useClients = (userId?: string) => {
 export const useClientForm = () => {
   const [formData, setFormData] = useState<Omit<Client, 'id' | 'createdAt' | 'updatedAt'>>({
     name: '',
+    legalName: '',
     gstin: '',
     phoneNumber: '',
     email: '',
+    contactPerson: '',
     clientType: '',
     creditLimit: 0,
+    address: '',
+    place: '',
+    stateCode: '',
+    pincode: '',
     billingAddress: '',
     shippingAddress: '',
+    shippingGstin: '',
+    shippingState: '',
+    shippingStateCode: '',
+    shippingPincode: '',
   });
 
   const updateField = useCallback((field: keyof typeof formData, value: any) => {
@@ -260,13 +270,23 @@ export const useClientForm = () => {
   const resetForm = useCallback(() => {
     setFormData({
       name: '',
+      legalName: '',
       gstin: '',
       phoneNumber: '',
       email: '',
+      contactPerson: '',
       clientType: '',
       creditLimit: 0,
+      address: '',
+      place: '',
+      stateCode: '',
+      pincode: '',
       billingAddress: '',
       shippingAddress: '',
+      shippingGstin: '',
+      shippingState: '',
+      shippingStateCode: '',
+      shippingPincode: '',
     });
   }, []);
 

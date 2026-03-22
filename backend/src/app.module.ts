@@ -11,7 +11,6 @@ import { GstFilingModule } from './gst-filing/gst-filing.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BusinessModule } from './business/business.module';
-import { OtpModule } from './otp/otp.module';
 
 @Module({
   imports: [
@@ -25,7 +24,6 @@ import { OtpModule } from './otp/otp.module';
     ReportsModule,
     DashboardModule,
     BusinessModule,
-    OtpModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -14,9 +14,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Filter as FilterIcon, MoreHorizontal, Download, Edit, Trash2, Eye, Send, FileText, DollarSign, Calendar, ShoppingCart, TrendingUp, Camera, X, FolderOpen, RefreshCw } from "lucide-react"
-import { invoicesApi, apiHelpers, type InvoiceResponse } from "@/lib/api"
+import { invoicesApi, settingsApi, type InvoiceResponse } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useClients } from "@/hooks/use-clients"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
+import QRCode from "qrcode"
 
 type InvoiceItem = {
   id: number
@@ -33,9 +36,35 @@ type InvoiceDetails = {
   invoiceNumber: string
   invoiceDate: string
   dueDate: string
+  documentTypeCode: string
+  documentDate: string
+  precedingInvoiceReference: string
+  precedingInvoiceDate: string
   invoiceType: string
+  supplyTypeCode: string
+  isService: string
+  supplierLegalName: string
+  supplierAddress: string
+  supplierPlace: string
+  supplierStateCode: string
+  supplierPincode: string
   party: string
   partyGSTIN: string
+  recipientLegalName: string
+  recipientAddress: string
+  recipientStateCode: string
+  placeOfSupplyStateCode: string
+  recipientPincode: string
+  recipientPlace: string
+  irn: string
+  shippingToGSTIN: string
+  shippingToState: string
+  shippingToStateCode: string
+  shippingToPincode: string
+  dispatchFromName: string
+  dispatchFromAddress: string
+  dispatchFromPlace: string
+  dispatchFromPincode: string
   eWayBill: string
   transportMode: string
   notes: string
@@ -73,17 +102,94 @@ export default function InvoicesPage() {
   const [deleting, setDeleting] = useState(false)
 
   const [invoiceForm, setInvoiceForm] = useState<InvoiceDetails>({
-    invoiceNumber: `INV-${String(Math.floor(Math.random() * 10000)).padStart(3, '0')}`,
+    invoiceNumber: 'INV-001',
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: '',
+    documentTypeCode: 'INV',
+    documentDate: new Date().toISOString().split('T')[0],
+    precedingInvoiceReference: '',
+    precedingInvoiceDate: '',
     invoiceType: '',
+    supplyTypeCode: 'B2B',
+    isService: 'N',
+    supplierLegalName: '',
+    supplierAddress: '',
+    supplierPlace: '',
+    supplierStateCode: '',
+    supplierPincode: '',
     party: '',
     partyGSTIN: '',
+    recipientLegalName: '',
+    recipientAddress: '',
+    recipientStateCode: '',
+    placeOfSupplyStateCode: '',
+    recipientPincode: '',
+    recipientPlace: '',
+    irn: '',
+    shippingToGSTIN: '',
+    shippingToState: '',
+    shippingToStateCode: '',
+    shippingToPincode: '',
+    dispatchFromName: '',
+    dispatchFromAddress: '',
+    dispatchFromPlace: '',
+    dispatchFromPincode: '',
     eWayBill: '',
     transportMode: '',
     notes: '',
     status: 'Pending'
   })
+
+  const [settingsDefaultsLoaded, setSettingsDefaultsLoaded] = useState(false)
+  const [invoiceBranding, setInvoiceBranding] = useState<{
+    logoUrl: string
+    companyName: string
+    bankName: string
+    accountNumber: string
+    ifsc: string
+    branch: string
+    termsConditions: string
+    invoicePrefix: string
+  }>({
+    logoUrl: "",
+    companyName: "",
+    bankName: "",
+    accountNumber: "",
+    ifsc: "",
+    branch: "",
+    termsConditions: "",
+    invoicePrefix: "INV",
+  })
+
+  const normalizePrefix = (prefix?: string) => {
+    const cleaned = (prefix || 'INV').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    return cleaned || 'INV'
+  }
+
+  const getNextInvoiceNumber = (existingNumbers?: string[], prefixOverride?: string) => {
+    const prefix = normalizePrefix(prefixOverride || invoiceBranding.invoicePrefix)
+    const numbers = existingNumbers || invoices.map((inv) => inv.invoiceNumber || '')
+    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^${escapedPrefix}[-/\\s]?(\\d+)$`)
+
+    let maxSeq = 0
+    let width = 3
+
+    for (const invoiceNo of numbers) {
+      const match = String(invoiceNo || '').trim().toUpperCase().match(pattern)
+      if (!match) continue
+
+      const seq = Number.parseInt(match[1], 10)
+      if (!Number.isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq
+      }
+      if (match[1].length > width) {
+        width = match[1].length
+      }
+    }
+
+    return `${prefix}-${String(maxSeq + 1).padStart(width, '0')}`
+  }
 
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
     {
@@ -188,6 +294,7 @@ export default function InvoicesPage() {
   useEffect(() => {
     setIsVisible(true);
     fetchInvoices();
+    loadClients();
     // load uploads history with user-specific key
     try {
       const userKey = getUserKey(UPLOADS_LS_KEY);
@@ -197,6 +304,77 @@ export default function InvoicesPage() {
       console.error('Error loading uploads:', error);
     }
   }, [user?.sub]);
+
+  useEffect(() => {
+    const loadInvoiceDefaults = async () => {
+      if (!user?.sub) return
+      try {
+        const settings = await settingsApi.getByUserId(user.sub)
+        setInvoiceBranding({
+          logoUrl: settings.logoUrl || "",
+          companyName: settings.companyName || settings.supplierLegalName || "",
+          bankName: settings.bankName || "",
+          accountNumber: settings.accountNumber || "",
+          ifsc: settings.ifsc || "",
+          branch: settings.branch || "",
+          termsConditions: settings.termsConditions || "",
+          invoicePrefix: settings.invoicePrefix || "INV",
+        })
+        setInvoiceForm((prev) => ({
+          ...prev,
+          documentTypeCode: settings.defaultDocumentTypeCode || prev.documentTypeCode,
+          supplyTypeCode: settings.defaultSupplyTypeCode || prev.supplyTypeCode,
+          isService: settings.defaultIsService || prev.isService,
+          supplierLegalName: settings.supplierLegalName || prev.supplierLegalName,
+          supplierAddress: settings.supplierAddress || prev.supplierAddress,
+          supplierPlace: settings.supplierPlace || prev.supplierPlace,
+          supplierStateCode: settings.supplierStateCode || prev.supplierStateCode,
+          supplierPincode: settings.supplierPincode || prev.supplierPincode,
+          dispatchFromName: settings.dispatchFromName || prev.dispatchFromName,
+          dispatchFromAddress: settings.dispatchFromAddress || prev.dispatchFromAddress,
+          dispatchFromPlace: settings.dispatchFromPlace || prev.dispatchFromPlace,
+          dispatchFromPincode: settings.dispatchFromPincode || prev.dispatchFromPincode,
+          notes: prev.notes || settings.termsConditions || "",
+        }))
+      } catch (error) {
+        console.warn('Unable to load invoice defaults from settings', error)
+      } finally {
+        setSettingsDefaultsLoaded(true)
+      }
+    }
+
+    if (!settingsDefaultsLoaded) {
+      loadInvoiceDefaults()
+    }
+  }, [user?.sub, settingsDefaultsLoaded])
+
+  useEffect(() => {
+    if (isDialogOpen) {
+      return
+    }
+
+    setInvoiceForm((prev) => ({
+      ...prev,
+      invoiceNumber: getNextInvoiceNumber(),
+    }))
+  }, [invoices, invoiceBranding.invoicePrefix, isDialogOpen])
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      return
+    }
+
+    setInvoiceForm((prev) => {
+      if (prev.notes?.trim()) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        notes: invoiceBranding.termsConditions || '',
+      }
+    })
+  }, [isDialogOpen, invoiceBranding.termsConditions])
 
   // Fetch invoices from backend
   const fetchInvoices = async () => {
@@ -238,13 +416,40 @@ export default function InvoicesPage() {
           invoiceNumber: inv.invoiceNumber,
           partyGstin: inv.partyGstin,
           ewayBillNumber: inv.ewayBillNumber || undefined,
+          items: (inv.items as InvoiceItem[] | undefined) || [],
           details: {
             invoiceNumber: inv.invoiceNumber,
             invoiceDate: new Date(inv.invoiceDate).toISOString().split('T')[0],
             dueDate: new Date(inv.dueDate).toISOString().split('T')[0],
+            documentTypeCode: inv.documentTypeCode || 'INV',
+            documentDate: inv.documentDate ? new Date(inv.documentDate).toISOString().split('T')[0] : new Date(inv.invoiceDate).toISOString().split('T')[0],
+            precedingInvoiceReference: inv.precedingInvoiceReference || '',
+            precedingInvoiceDate: inv.precedingInvoiceDate ? new Date(inv.precedingInvoiceDate).toISOString().split('T')[0] : '',
             invoiceType: inv.invoiceType,
+            supplyTypeCode: inv.supplyTypeCode || 'B2B',
+            isService: inv.isService || 'N',
+            supplierLegalName: inv.supplierLegalName || '',
+            supplierAddress: inv.supplierAddress || '',
+            supplierPlace: inv.supplierPlace || '',
+            supplierStateCode: inv.supplierStateCode || '',
+            supplierPincode: inv.supplierPincode || '',
             party: inv.party,
             partyGSTIN: inv.partyGstin,
+            recipientLegalName: inv.recipientLegalName || inv.party,
+            recipientAddress: inv.recipientAddress || '',
+            recipientStateCode: inv.recipientStateCode || '',
+            placeOfSupplyStateCode: inv.placeOfSupplyStateCode || '',
+            recipientPincode: inv.recipientPincode || '',
+            recipientPlace: inv.recipientPlace || '',
+            irn: inv.irn || '',
+            shippingToGSTIN: inv.shippingToGstin || '',
+            shippingToState: inv.shippingToState || '',
+            shippingToStateCode: inv.shippingToStateCode || '',
+            shippingToPincode: inv.shippingToPincode || '',
+            dispatchFromName: inv.dispatchFromName || '',
+            dispatchFromAddress: inv.dispatchFromAddress || '',
+            dispatchFromPlace: inv.dispatchFromPlace || '',
+            dispatchFromPincode: inv.dispatchFromPincode || '',
             eWayBill: inv.ewayBillNumber || "",
             transportMode: inv.transportMode || "",
             notes: inv.notes || "",
@@ -324,7 +529,7 @@ export default function InvoicesPage() {
     const guessedParty = clients.find(client => 
       lower.includes(client.name.split(" ")[0].toLowerCase())
     )?.name || ""
-    const nextNo = `INV-${String(invoices.length + 1).padStart(3, '0')}`
+    const nextNo = getNextInvoiceNumber()
     const selectedClient = clients.find(client => client.name === guessedParty)
     setInvoiceForm(prev => ({
       ...prev,
@@ -381,9 +586,35 @@ export default function InvoicesPage() {
       invoiceNumber: invoice.id.toString(),
       invoiceDate: invoice.date,
       dueDate: invoice.details?.dueDate || '',
+      documentTypeCode: invoice.details?.documentTypeCode || 'INV',
+      documentDate: invoice.details?.documentDate || invoice.date,
+      precedingInvoiceReference: invoice.details?.precedingInvoiceReference || '',
+      precedingInvoiceDate: invoice.details?.precedingInvoiceDate || '',
       invoiceType: invoice.details?.invoiceType || '',
+      supplyTypeCode: invoice.details?.supplyTypeCode || 'B2B',
+      isService: invoice.details?.isService || 'N',
+      supplierLegalName: invoice.details?.supplierLegalName || '',
+      supplierAddress: invoice.details?.supplierAddress || '',
+      supplierPlace: invoice.details?.supplierPlace || '',
+      supplierStateCode: invoice.details?.supplierStateCode || '',
+      supplierPincode: invoice.details?.supplierPincode || '',
       party: invoice.party,
       partyGSTIN: invoice.details?.partyGSTIN || '',
+      recipientLegalName: invoice.details?.recipientLegalName || invoice.party,
+      recipientAddress: invoice.details?.recipientAddress || '',
+      recipientStateCode: invoice.details?.recipientStateCode || '',
+      placeOfSupplyStateCode: invoice.details?.placeOfSupplyStateCode || '',
+      recipientPincode: invoice.details?.recipientPincode || '',
+      recipientPlace: invoice.details?.recipientPlace || '',
+      irn: invoice.details?.irn || '',
+      shippingToGSTIN: invoice.details?.shippingToGSTIN || '',
+      shippingToState: invoice.details?.shippingToState || '',
+      shippingToStateCode: invoice.details?.shippingToStateCode || '',
+      shippingToPincode: invoice.details?.shippingToPincode || '',
+      dispatchFromName: invoice.details?.dispatchFromName || '',
+      dispatchFromAddress: invoice.details?.dispatchFromAddress || '',
+      dispatchFromPlace: invoice.details?.dispatchFromPlace || '',
+      dispatchFromPincode: invoice.details?.dispatchFromPincode || '',
       eWayBill: invoice.details?.eWayBill || '',
       transportMode: invoice.details?.transportMode || '',
       notes: invoice.details?.notes || '',
@@ -407,9 +638,314 @@ export default function InvoicesPage() {
     // Here you would implement email/SMS sending functionality
   }
 
-  const handleDownload = (invoice: Invoice) => {
-    alert(`Downloading invoice ${invoice.id}...`)
-    // Here you would implement PDF generation and download
+  const handleDownload = async (invoice: Invoice) => {
+    let latestSettings: any = null
+    if (user?.sub) {
+      try {
+        latestSettings = await settingsApi.getByUserId(user.sub)
+      } catch {
+        // Keep current branding state as fallback if settings fetch fails.
+      }
+    }
+
+    const pdfBranding = {
+      logoUrl: latestSettings?.logoUrl || invoiceBranding.logoUrl || "",
+      companyName:
+        latestSettings?.companyName ||
+        latestSettings?.supplierLegalName ||
+        invoiceBranding.companyName ||
+        "",
+      bankName: latestSettings?.bankName || invoiceBranding.bankName || "",
+      accountNumber: latestSettings?.accountNumber || invoiceBranding.accountNumber || "",
+      ifsc: latestSettings?.ifsc || invoiceBranding.ifsc || "",
+      branch: latestSettings?.branch || invoiceBranding.branch || "",
+      termsConditions: latestSettings?.termsConditions || invoiceBranding.termsConditions || "",
+    }
+
+    const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" })
+    const details = invoice.details
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const margin = 8
+    const contentWidth = pageWidth - margin * 2
+    const rightEdge = margin + contentWidth
+
+    const formatDate = (dateStr?: string) => {
+      if (!dateStr) return "-"
+      const d = new Date(dateStr)
+      if (Number.isNaN(d.getTime())) return dateStr
+      return d.toLocaleDateString("en-GB")
+    }
+
+    const formatCurrency = (value: number) => `INR ${value.toFixed(2)}`
+
+    const normalizedItems = (invoice.items || []).filter(item => item.itemName || item.hsnCode)
+    const computedSubtotal = normalizedItems.reduce((sum, item) => {
+      const baseAmount = item.price * item.quantity
+      const discountAmount = (baseAmount * item.discount) / 100
+      return sum + (baseAmount - discountAmount)
+    }, 0)
+    const computedTax = normalizedItems.reduce((sum, item) => {
+      const baseAmount = item.price * item.quantity
+      const discountAmount = (baseAmount * item.discount) / 100
+      const taxableValue = baseAmount - discountAmount
+      return sum + ((taxableValue * item.taxRate) / 100)
+    }, 0)
+    const subtotal = computedSubtotal || Number(invoice.amount || 0)
+    const totalTax = computedTax || Number(invoice.gst || 0)
+    const totalValue = Number(invoice.total || (subtotal + totalTax))
+    const cgst = totalTax / 2
+    const sgst = totalTax / 2
+
+    let y = margin
+
+    pdf.setDrawColor(120)
+    pdf.rect(margin, y, contentWidth, 20)
+    pdf.setFontSize(8)
+    pdf.text("Page No. 1 of 1", margin + 1.5, y + 3.5)
+    pdf.text("Original Copy", rightEdge - 20, y + 3.5)
+
+    if (pdfBranding.logoUrl) {
+      try {
+        pdf.addImage(pdfBranding.logoUrl, "PNG", margin + 1.5, y + 5, 14, 12)
+      } catch {
+        // Ignore invalid image data and continue PDF generation.
+      }
+    }
+
+    pdf.setFontSize(13)
+    pdf.setFont("helvetica", "bold")
+    pdf.text("TAX INVOICE", pageWidth / 2, y + 5.5, { align: "center" })
+    pdf.setFontSize(12)
+    pdf.text(details?.supplierLegalName || pdfBranding.companyName || "Company Name", pageWidth / 2, y + 11, { align: "center" })
+    pdf.setFont("helvetica", "normal")
+    pdf.setFontSize(7.5)
+    const supplierAddressLine = [details?.supplierAddress, details?.supplierPlace, details?.supplierStateCode, details?.supplierPincode]
+      .filter(Boolean)
+      .join(", ") || "Address"
+    pdf.text(supplierAddressLine, pageWidth / 2, y + 14.5, { align: "center", maxWidth: 120 })
+    pdf.text(
+      `Mobile: -   Email: -   GSTIN: ${details?.partyGSTIN || "-"}   PAN: -`,
+      pageWidth / 2,
+      y + 18,
+      { align: "center" }
+    )
+    y += 20
+
+    const headerBlockHeight = 34
+    const midX = margin + contentWidth / 2
+    pdf.rect(margin, y, contentWidth, headerBlockHeight)
+    pdf.line(midX, y, midX, y + headerBlockHeight)
+    pdf.setFontSize(8)
+    pdf.setFont("helvetica", "bold")
+    pdf.text("Invoice Details", margin + 2, y + 4)
+    pdf.text("Transporter Details", midX + 2, y + 4)
+    pdf.setFont("helvetica", "normal")
+    const leftDetails = [
+      ["Invoice Number", invoice.invoiceNumber || String(invoice.id)],
+      ["Invoice Date", formatDate(details?.invoiceDate || invoice.date)],
+      ["Due Date", formatDate(details?.dueDate)],
+      ["Place Of Supply", details?.placeOfSupplyStateCode || details?.recipientStateCode || "-"],
+      ["Reverse Charge", "No"],
+      ["Document Type", details?.documentTypeCode || "INV"],
+      ["Supply Type", details?.supplyTypeCode || "B2B"],
+      ["Is Service", details?.isService || "N"],
+    ]
+    const rightDetails = [
+      ["Transport Mode", details?.transportMode || "-"],
+      ["E-Way Bill No.", details?.eWayBill || "-"],
+      ["E-Way Bill Date", formatDate(details?.documentDate)],
+      ["Dispatch Name", details?.dispatchFromName || "-"],
+      ["Dispatch Place", details?.dispatchFromPlace || "-"],
+      ["Dispatch Pincode", details?.dispatchFromPincode || "-"],
+      ["Preceding Inv Ref", details?.precedingInvoiceReference || "-"],
+      ["Preceding Inv Date", formatDate(details?.precedingInvoiceDate)],
+    ]
+    leftDetails.forEach((row, i) => {
+      pdf.text(`${row[0]} : ${row[1]}`, margin + 2, y + 8 + i * 3.3)
+    })
+    rightDetails.forEach((row, i) => {
+      pdf.text(`${row[0]} : ${row[1]}`, midX + 2, y + 8 + i * 3.3)
+    })
+    y += headerBlockHeight
+
+    const partyBlockHeight = 30
+    pdf.rect(margin, y, contentWidth, partyBlockHeight)
+    pdf.line(midX, y, midX, y + partyBlockHeight)
+    pdf.setFont("helvetica", "bold")
+    pdf.text("Billing Details", margin + 2, y + 4)
+    pdf.text("Shipping Details", midX + 2, y + 4)
+    pdf.setFont("helvetica", "normal")
+    const billingLines = [
+      details?.recipientLegalName || invoice.party,
+      `GSTIN: ${details?.partyGSTIN || "-"}`,
+      details?.recipientAddress || "-",
+      [details?.recipientPlace, details?.recipientStateCode, details?.recipientPincode].filter(Boolean).join(" - ") || "-",
+    ]
+    const shippingLines = [
+      details?.recipientLegalName || invoice.party,
+      `GSTIN: ${details?.shippingToGSTIN || details?.partyGSTIN || "-"}`,
+      details?.recipientAddress || "-",
+      [details?.shippingToState, details?.shippingToStateCode, details?.shippingToPincode].filter(Boolean).join(" - ") || "-",
+    ]
+    billingLines.forEach((line, i) => {
+      pdf.text(String(line), margin + 2, y + 8 + i * 4, { maxWidth: contentWidth / 2 - 4 })
+    })
+    shippingLines.forEach((line, i) => {
+      pdf.text(String(line), midX + 2, y + 8 + i * 4, { maxWidth: contentWidth / 2 - 4 })
+    })
+    y += partyBlockHeight
+
+    pdf.rect(margin, y, contentWidth, 6)
+    pdf.setFont("helvetica", "bold")
+    pdf.setFontSize(7)
+    const irn = details?.irn || "-"
+    pdf.text(`IRN: ${irn}`, margin + 2, y + 4)
+    pdf.text(`Ack No.: -`, margin + contentWidth * 0.54, y + 4)
+    pdf.text(`Ack Date: ${formatDate(details?.documentDate)}`, margin + contentWidth * 0.74, y + 4)
+    y += 6
+
+    autoTable(pdf, {
+      startY: y,
+      head: [["Sr.", "Item Description", "HSN/SAC", "Qty", "Unit", "List Price", "Disc.", "Tax %", "Amount"]],
+      body: normalizedItems.length
+        ? normalizedItems.map((item, index) => {
+            const lineAmount = item.amount || (item.price * item.quantity)
+            return [
+              String(index + 1),
+              item.itemName || "-",
+              item.hsnCode || "-",
+              String(item.quantity || 0),
+              "Nos",
+              item.price.toFixed(2),
+              `${item.discount.toFixed(2)}%`,
+              item.taxRate.toFixed(2),
+              lineAmount.toFixed(2),
+            ]
+          })
+        : [["1", "-", "-", "0", "Nos", "0.00", "0.00%", "0.00", "0.00"]],
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 1.2, lineColor: [140, 140, 140], lineWidth: 0.1 },
+      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
+      margin: { left: margin, right: margin },
+      columnStyles: {
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 56 },
+        2: { cellWidth: 20, halign: "center" },
+        3: { cellWidth: 11, halign: "right" },
+        4: { cellWidth: 11, halign: "center" },
+        5: { cellWidth: 20, halign: "right" },
+        6: { cellWidth: 14, halign: "right" },
+        7: { cellWidth: 14, halign: "right" },
+        8: { cellWidth: 24, halign: "right" },
+      },
+    })
+
+    const tableFinalY = (pdf as any).lastAutoTable?.finalY || y + 20
+    const totalsTop = tableFinalY
+    pdf.rect(margin, totalsTop, contentWidth, 20)
+    pdf.setFontSize(8)
+    pdf.setFont("helvetica", "normal")
+    pdf.text("Discount", margin + 4, totalsTop + 5)
+    pdf.text("Total", margin + 4, totalsTop + 11)
+    pdf.text(`- ${formatCurrency(0)}`, rightEdge - 4, totalsTop + 5, { align: "right" })
+    pdf.text(formatCurrency(totalValue), rightEdge - 4, totalsTop + 11, { align: "right" })
+    pdf.setFont("helvetica", "bold")
+    pdf.text(`Assessable Value: ${formatCurrency(subtotal)}`, margin + 4, totalsTop + 16)
+    pdf.text(`CGST: ${formatCurrency(cgst)}   SGST: ${formatCurrency(sgst)}   IGST: ${formatCurrency(0)}`, margin + 70, totalsTop + 16)
+
+    let bottomY = totalsTop + 20
+    const footerHeight = 52
+    if (bottomY + footerHeight > 287) {
+      pdf.addPage()
+      bottomY = margin
+    }
+
+    pdf.rect(margin, bottomY, contentWidth, footerHeight)
+    const col1 = margin + contentWidth * 0.25
+    const col2 = margin + contentWidth * 0.5
+    const col3 = margin + contentWidth * 0.75
+    pdf.line(col1, bottomY, col1, bottomY + footerHeight)
+    pdf.line(col2, bottomY, col2, bottomY + footerHeight)
+    pdf.line(col3, bottomY, col3, bottomY + footerHeight)
+
+    pdf.setFont("helvetica", "bold")
+    pdf.setFontSize(8)
+    pdf.text("Terms and Conditions", margin + 2, bottomY + 4)
+    pdf.setFont("helvetica", "normal")
+    const termsMaxWidth = col1 - margin - 4
+    const defaultTermsText = [
+      "1. Goods once sold will not be taken back.",
+      "2. Interest @ 18% p.a. may be charged on delayed payment.",
+      "3. Subject to local jurisdiction only.",
+    ]
+    const termsSource = details?.notes?.trim()
+      ? details.notes
+      : pdfBranding.termsConditions?.trim()
+      ? pdfBranding.termsConditions
+      : defaultTermsText.join("\n")
+    const rawTermsLines = termsSource
+      .split(/\r?\n/)
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+
+    let termsY = bottomY + 9
+    const termsLineHeight = 3.4
+    rawTermsLines.forEach((line: string) => {
+      const wrapped = pdf.splitTextToSize(line, termsMaxWidth) as string[]
+      wrapped.forEach((wrappedLine) => {
+        pdf.text(wrappedLine, margin + 2, termsY)
+        termsY += termsLineHeight
+      })
+    })
+
+    pdf.setFont("helvetica", "bold")
+    pdf.text("Bank Details", col1 + 2, bottomY + 4)
+    pdf.setFont("helvetica", "normal")
+    pdf.text(`Account Number: ${pdfBranding.accountNumber || "-"}`, col1 + 2, bottomY + 10)
+    pdf.text(`Bank: ${pdfBranding.bankName || "-"}`, col1 + 2, bottomY + 16)
+    pdf.text(`IFSC: ${pdfBranding.ifsc || "-"}`, col1 + 2, bottomY + 22)
+    pdf.text(`Branch: ${pdfBranding.branch || "-"}`, col1 + 2, bottomY + 28)
+
+    pdf.setFont("helvetica", "bold")
+    pdf.text("E-Invoice QR", col2 + (col3 - col2) / 2, bottomY + 4, { align: "center" })
+    pdf.rect(col2 + 8, bottomY + 8, (col3 - col2) - 16, 30)
+    const qrPayload = JSON.stringify({
+      invoiceNumber: invoice.invoiceNumber || invoice.id,
+      invoiceDate: details?.invoiceDate || invoice.date,
+      irn: details?.irn || "",
+      supplier: details?.supplierLegalName || pdfBranding.companyName || "",
+      recipient: details?.recipientLegalName || invoice.party,
+      partyGstin: details?.partyGSTIN || "",
+      taxableValue: subtotal.toFixed(2),
+      totalTax: totalTax.toFixed(2),
+      totalInvoiceValue: totalValue.toFixed(2),
+      eWayBill: details?.eWayBill || "",
+    })
+
+    try {
+      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+        width: 128,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      })
+      pdf.addImage(qrDataUrl, "PNG", col2 + 10, bottomY + 10, (col3 - col2) - 20, 26)
+    } catch {
+      pdf.setFont("helvetica", "normal")
+      pdf.setFontSize(7)
+      pdf.text("QR generation failed", col2 + (col3 - col2) / 2, bottomY + 25, { align: "center" })
+    }
+
+    pdf.setFont("helvetica", "bold")
+    pdf.setFontSize(8)
+    pdf.text("For Company Name", rightEdge - 2, bottomY + 36, { align: "right" })
+    pdf.text("Authorized Signatory", rightEdge - 2, bottomY + 47, { align: "right" })
+
+    pdf.setFont("helvetica", "normal")
+    pdf.setFontSize(7)
+    const footerText = `Invoice: ${invoice.invoiceNumber || invoice.id} | Generated on: ${new Date().toLocaleString("en-GB")}`
+    pdf.text(footerText, pageWidth / 2, 292, { align: "center" })
+
+    pdf.save(`invoice-${invoice.invoiceNumber || invoice.id}.pdf`)
   }
 
   const handleDelete = (invoice: Invoice) => {
@@ -485,9 +1021,41 @@ export default function InvoicesPage() {
         userId: user.sub,
         invoiceDate: invoiceForm.invoiceDate,
         dueDate: invoiceForm.dueDate || invoiceForm.invoiceDate,
+        documentTypeCode: invoiceForm.documentTypeCode,
+        documentDate: invoiceForm.documentDate || invoiceForm.invoiceDate,
+        precedingInvoiceReference: invoiceForm.precedingInvoiceReference || undefined,
+        precedingInvoiceDate: invoiceForm.precedingInvoiceDate || undefined,
         invoiceType: invoiceForm.invoiceType,
+        supplyTypeCode: invoiceForm.supplyTypeCode,
+        isService: invoiceForm.isService,
+        supplierLegalName: invoiceForm.supplierLegalName,
+        supplierAddress: invoiceForm.supplierAddress,
+        supplierPlace: invoiceForm.supplierPlace,
+        supplierStateCode: invoiceForm.supplierStateCode,
+        supplierPincode: invoiceForm.supplierPincode,
         party: invoiceForm.party,
         partyGstin: invoiceForm.partyGSTIN,
+        recipientLegalName: invoiceForm.recipientLegalName || invoiceForm.party,
+        recipientAddress: invoiceForm.recipientAddress,
+        recipientStateCode: invoiceForm.recipientStateCode,
+        placeOfSupplyStateCode: invoiceForm.placeOfSupplyStateCode,
+        recipientPincode: invoiceForm.recipientPincode,
+        recipientPlace: invoiceForm.recipientPlace,
+        irn: invoiceForm.irn || undefined,
+        shippingToGstin: invoiceForm.shippingToGSTIN || undefined,
+        shippingToState: invoiceForm.shippingToState || undefined,
+        shippingToStateCode: invoiceForm.shippingToStateCode || undefined,
+        shippingToPincode: invoiceForm.shippingToPincode || undefined,
+        dispatchFromName: invoiceForm.dispatchFromName || undefined,
+        dispatchFromAddress: invoiceForm.dispatchFromAddress || undefined,
+        dispatchFromPlace: invoiceForm.dispatchFromPlace || undefined,
+        dispatchFromPincode: invoiceForm.dispatchFromPincode || undefined,
+        items: invoiceItems,
+        assessableValue: totals.subtotal.toFixed(2),
+        gstRate: invoiceItems.length ? (invoiceItems[0]?.taxRate || 0).toString() : '0',
+        igstValue: totals.igst.toFixed(2),
+        cgstValue: totals.cgst.toFixed(2),
+        sgstValue: totals.sgst.toFixed(2),
         amount: totals.subtotal.toString(),
         gst: (totals.cgst + totals.sgst + totals.igst).toString(),
         totalAmount: totals.total.toString(),
@@ -677,7 +1245,17 @@ export default function InvoicesPage() {
     setInvoiceForm(prev => ({
       ...prev,
       party: partyName,
-      partyGSTIN: selectedClient?.gstin || ''
+      partyGSTIN: selectedClient?.gstin || '',
+      recipientLegalName: selectedClient?.legalName || selectedClient?.name || '',
+      recipientAddress: selectedClient?.address || selectedClient?.billingAddress || '',
+      recipientPlace: selectedClient?.place || '',
+      recipientStateCode: selectedClient?.stateCode || '',
+      placeOfSupplyStateCode: selectedClient?.stateCode || '',
+      recipientPincode: selectedClient?.pincode || '',
+      shippingToGSTIN: selectedClient?.shippingGstin || selectedClient?.gstin || '',
+      shippingToState: selectedClient?.shippingState || '',
+      shippingToStateCode: selectedClient?.shippingStateCode || selectedClient?.stateCode || '',
+      shippingToPincode: selectedClient?.shippingPincode || selectedClient?.pincode || '',
     }))
   }
 
@@ -724,9 +1302,41 @@ export default function InvoicesPage() {
         invoiceNumber: invoiceForm.invoiceNumber,
         invoiceDate: invoiceForm.invoiceDate,
         dueDate: invoiceForm.dueDate || invoiceForm.invoiceDate, // Use invoice date if due date not set
+        documentTypeCode: invoiceForm.documentTypeCode,
+        documentDate: invoiceForm.documentDate || invoiceForm.invoiceDate,
+        precedingInvoiceReference: invoiceForm.precedingInvoiceReference || undefined,
+        precedingInvoiceDate: invoiceForm.precedingInvoiceDate || undefined,
         invoiceType: invoiceForm.invoiceType,
+        supplyTypeCode: invoiceForm.supplyTypeCode,
+        isService: invoiceForm.isService,
+        supplierLegalName: invoiceForm.supplierLegalName,
+        supplierAddress: invoiceForm.supplierAddress,
+        supplierPlace: invoiceForm.supplierPlace,
+        supplierStateCode: invoiceForm.supplierStateCode,
+        supplierPincode: invoiceForm.supplierPincode,
         party: invoiceForm.party,
         partyGstin: invoiceForm.partyGSTIN,
+        recipientLegalName: invoiceForm.recipientLegalName || invoiceForm.party,
+        recipientAddress: invoiceForm.recipientAddress,
+        recipientStateCode: invoiceForm.recipientStateCode,
+        placeOfSupplyStateCode: invoiceForm.placeOfSupplyStateCode,
+        recipientPincode: invoiceForm.recipientPincode,
+        recipientPlace: invoiceForm.recipientPlace,
+        irn: invoiceForm.irn || undefined,
+        shippingToGstin: invoiceForm.shippingToGSTIN || undefined,
+        shippingToState: invoiceForm.shippingToState || undefined,
+        shippingToStateCode: invoiceForm.shippingToStateCode || undefined,
+        shippingToPincode: invoiceForm.shippingToPincode || undefined,
+        dispatchFromName: invoiceForm.dispatchFromName || undefined,
+        dispatchFromAddress: invoiceForm.dispatchFromAddress || undefined,
+        dispatchFromPlace: invoiceForm.dispatchFromPlace || undefined,
+        dispatchFromPincode: invoiceForm.dispatchFromPincode || undefined,
+        items: invoiceItems,
+        assessableValue: totals.subtotal.toFixed(2),
+        gstRate: invoiceItems.length ? (invoiceItems[0]?.taxRate || 0).toString() : '0',
+        igstValue: totals.igst.toFixed(2),
+        cgstValue: totals.cgst.toFixed(2),
+        sgstValue: totals.sgst.toFixed(2),
         amount: totals.subtotal.toString(),
         gst: (totals.cgst + totals.sgst + totals.igst).toString(),
         totalAmount: totals.total.toString(),
@@ -761,18 +1371,48 @@ export default function InvoicesPage() {
       setInvoices(prev => [newInvoice, ...prev])
       
       // Reset form
-      setInvoiceForm({
-        invoiceNumber: `INV-${String(Math.floor(Math.random() * 10000)).padStart(3, '0')}`,
+      const nextInvoiceNo = getNextInvoiceNumber(
+        [...invoices.map((inv) => inv.invoiceNumber || ''), response.invoiceNumber || ''],
+      )
+
+      setInvoiceForm((prev) => ({
+        invoiceNumber: nextInvoiceNo,
         invoiceDate: new Date().toISOString().split('T')[0],
         dueDate: '',
+        documentTypeCode: prev.documentTypeCode,
+        documentDate: new Date().toISOString().split('T')[0],
+        precedingInvoiceReference: '',
+        precedingInvoiceDate: '',
         invoiceType: '',
+        supplyTypeCode: prev.supplyTypeCode,
+        isService: prev.isService,
+        supplierLegalName: prev.supplierLegalName,
+        supplierAddress: prev.supplierAddress,
+        supplierPlace: prev.supplierPlace,
+        supplierStateCode: prev.supplierStateCode,
+        supplierPincode: prev.supplierPincode,
         party: '',
         partyGSTIN: '',
+        recipientLegalName: '',
+        recipientAddress: '',
+        recipientStateCode: '',
+        placeOfSupplyStateCode: '',
+        recipientPincode: '',
+        recipientPlace: '',
+        irn: '',
+        shippingToGSTIN: '',
+        shippingToState: '',
+        shippingToStateCode: '',
+        shippingToPincode: '',
+        dispatchFromName: prev.dispatchFromName,
+        dispatchFromAddress: prev.dispatchFromAddress,
+        dispatchFromPlace: prev.dispatchFromPlace,
+        dispatchFromPincode: prev.dispatchFromPincode,
         eWayBill: '',
         transportMode: '',
-        notes: '',
+        notes: invoiceBranding.termsConditions || '',
         status: 'Pending'
-      })
+      }))
       setInvoiceItems([{
         id: 1,
         itemName: '',
@@ -1130,6 +1770,73 @@ export default function InvoicesPage() {
                             </div>
                           </div>
 
+                          {/* E-Invoice Mandatory Fields */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Document Type Code</Label>
+                              <Select value={invoiceForm.documentTypeCode} onValueChange={(value) => setInvoiceForm({ ...invoiceForm, documentTypeCode: value })}>
+                                <SelectTrigger className="rounded-xl h-12"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="INV">INV</SelectItem>
+                                  <SelectItem value="CRN">CRN</SelectItem>
+                                  <SelectItem value="DBN">DBN</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Supply Type Code</Label>
+                              <Select value={invoiceForm.supplyTypeCode} onValueChange={(value) => setInvoiceForm({ ...invoiceForm, supplyTypeCode: value })}>
+                                <SelectTrigger className="rounded-xl h-12"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="B2B">B2B</SelectItem>
+                                  <SelectItem value="B2C">B2C</SelectItem>
+                                  <SelectItem value="SEZWP">SEZWP</SelectItem>
+                                  <SelectItem value="SEZWOP">SEZWOP</SelectItem>
+                                  <SelectItem value="EXPWP">EXPWP</SelectItem>
+                                  <SelectItem value="EXPWOP">EXPWOP</SelectItem>
+                                  <SelectItem value="DEXP">DEXP</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Is Service</Label>
+                              <Select value={invoiceForm.isService} onValueChange={(value) => setInvoiceForm({ ...invoiceForm, isService: value })}>
+                                <SelectTrigger className="rounded-xl h-12"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="N">N</SelectItem>
+                                  <SelectItem value="Y">Y</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Supplier Legal Name</Label>
+                              <Input value={invoiceForm.supplierLegalName} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierLegalName: e.target.value })} className="rounded-xl h-12" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Recipient Legal Name</Label>
+                              <Input value={invoiceForm.recipientLegalName} onChange={(e) => setInvoiceForm({ ...invoiceForm, recipientLegalName: e.target.value })} className="rounded-xl h-12" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Supplier Address</Label>
+                              <Textarea value={invoiceForm.supplierAddress} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierAddress: e.target.value })} rows={2} className="rounded-xl" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Recipient Address</Label>
+                              <Textarea value={invoiceForm.recipientAddress} onChange={(e) => setInvoiceForm({ ...invoiceForm, recipientAddress: e.target.value })} rows={2} className="rounded-xl" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Recipient State Code</Label>
+                              <Input value={invoiceForm.recipientStateCode} onChange={(e) => setInvoiceForm({ ...invoiceForm, recipientStateCode: e.target.value })} className="rounded-xl h-12" />
+                            </div>
+                            <div className="space-y-3">
+                              <Label className="text-sm font-semibold text-gray-700">Place of Supply State Code</Label>
+                              <Input value={invoiceForm.placeOfSupplyStateCode} onChange={(e) => setInvoiceForm({ ...invoiceForm, placeOfSupplyStateCode: e.target.value })} className="rounded-xl h-12" />
+                            </div>
+                          </div>
+
                           {/* Invoice Items */}
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -1274,13 +1981,13 @@ export default function InvoicesPage() {
                           {/* Notes */}
                           <div className="space-y-3">
                             <Label htmlFor="notes" className="text-sm font-semibold text-gray-700">
-                              Notes
+                              Notes / Terms and Conditions
                             </Label>
                             <Textarea 
                               id="notes"
                               value={invoiceForm.notes}
                               onChange={(e) => setInvoiceForm({...invoiceForm, notes: e.target.value})}
-                              placeholder="Additional notes or terms..."
+                              placeholder="Auto-filled from Settings. You can edit this for this invoice only."
                               rows={4}
                               className="rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 bg-white/70 backdrop-blur-sm resize-none"
                             />
@@ -1598,16 +2305,42 @@ export default function InvoicesPage() {
                 <Button
                   onClick={() => {
                     // Prefill form with stored file data
-                    const nextNo = `INV-${String(invoices.length + 1).padStart(3, '0')}`
+                    const nextNo = getNextInvoiceNumber()
                     // Check if party exists in clients, otherwise use stored data as-is
                     const existingClient = clients.find(client => client.name === file.data.party)
                     setInvoiceForm({
                       invoiceNumber: nextNo,
                       invoiceDate: new Date().toISOString().slice(0, 10),
                       dueDate: '',
+                      documentTypeCode: invoiceForm.documentTypeCode,
+                      documentDate: new Date().toISOString().slice(0, 10),
+                      precedingInvoiceReference: '',
+                      precedingInvoiceDate: '',
                       invoiceType: file.data.invoiceType,
+                      supplyTypeCode: invoiceForm.supplyTypeCode,
+                      isService: invoiceForm.isService,
+                      supplierLegalName: invoiceForm.supplierLegalName,
+                      supplierAddress: invoiceForm.supplierAddress,
+                      supplierPlace: invoiceForm.supplierPlace,
+                      supplierStateCode: invoiceForm.supplierStateCode,
+                      supplierPincode: invoiceForm.supplierPincode,
                       party: file.data.party,
                       partyGSTIN: existingClient?.gstin || file.data.partyGSTIN,
+                      recipientLegalName: existingClient?.legalName || existingClient?.name || file.data.party,
+                      recipientAddress: existingClient?.address || existingClient?.billingAddress || '',
+                      recipientStateCode: existingClient?.stateCode || '',
+                      placeOfSupplyStateCode: existingClient?.stateCode || '',
+                      recipientPincode: existingClient?.pincode || '',
+                      recipientPlace: existingClient?.place || '',
+                      irn: '',
+                      shippingToGSTIN: existingClient?.shippingGstin || existingClient?.gstin || '',
+                      shippingToState: existingClient?.shippingState || '',
+                      shippingToStateCode: existingClient?.shippingStateCode || existingClient?.stateCode || '',
+                      shippingToPincode: existingClient?.shippingPincode || existingClient?.pincode || '',
+                      dispatchFromName: invoiceForm.dispatchFromName,
+                      dispatchFromAddress: invoiceForm.dispatchFromAddress,
+                      dispatchFromPlace: invoiceForm.dispatchFromPlace,
+                      dispatchFromPincode: invoiceForm.dispatchFromPincode,
                       eWayBill: file.data.eWayBill || '',
                       transportMode: file.data.transportMode || '',
                       notes: file.data.notes || 'Imported from stored files',

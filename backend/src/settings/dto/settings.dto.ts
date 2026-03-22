@@ -58,6 +58,54 @@ export class CreateSettingsDto {
 
   @IsOptional()
   @IsString()
+  defaultDocumentTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultSupplyTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultIsService?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierLegalName?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPincode?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromName?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPincode?: string;
+
+  @IsOptional()
+  @IsString()
   invoiceFooter?: string;
 
   @IsOptional()
@@ -185,6 +233,54 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsInt()
   dueDays?: number;
+
+  @IsOptional()
+  @IsString()
+  defaultDocumentTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultSupplyTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultIsService?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierLegalName?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierStateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierPincode?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromName?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchFromPincode?: string;
 
   @IsOptional()
   @IsString()

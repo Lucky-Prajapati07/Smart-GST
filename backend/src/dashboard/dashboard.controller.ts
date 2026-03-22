@@ -24,6 +24,11 @@ export class DashboardController {
     return this.dashboardService.refreshDashboardStats(userId);
   }
 
+  @Get('revenue/:userId')
+  async getRevenueSummary(@Param('userId') userId: string) {
+    return this.dashboardService.getRevenueSummary(userId);
+  }
+
   @Get('activity/:userId')
   async getRecentActivity(
     @Param('userId') userId: string,
