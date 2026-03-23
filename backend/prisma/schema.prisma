@@ -34,6 +34,21 @@ enum GstPaymentStatus {
   failed
 }
 
+enum ManagedBusinessStatus {
+  Pending
+  Verified
+  Flagged
+  Rejected
+  Inactive
+}
+
+enum ReminderStatus {
+  Pending
+  Sent
+  Cancelled
+  Failed
+}
+
 model Business {
   id                  Int      @id @default(autoincrement())
   userId              String
@@ -54,12 +69,36 @@ model Business {
   gstCertificateUrl   String?
   businessLicenseUrl  String?
   isActive            Boolean  @default(true)
+  managementStatus    ManagedBusinessStatus @default(Pending)
+  reviewNotes         String?
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  deletedAt           DateTime?
   turnover            Decimal  @default(0) @db.Decimal(15, 2)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   
   @@index([userId])
   @@index([gstin])
+  @@index([managementStatus])
+  @@index([deletedAt])
+}
+
+model Reminder {
+  id             Int            @id @default(autoincrement())
+  userId         String
+  title          String
+  description    String?
+  scheduledFor   DateTime
+  recipientEmail String
+  status         ReminderStatus @default(Pending)
+  sentAt         DateTime?
+  lastError      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([userId, status])
+  @@index([scheduledFor])
 }
 
 model Clients {
@@ -313,3 +352,181 @@ model DashboardStats {
   lastUpdated     DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+model Admin {
+  id              Int      @id @default(autoincrement())
+  email           String   @unique
+  name            String
+  role            String   @default("admin") // admin, superadmin
+  status          String   @default("Active") // Active, Inactive
+  lastLogin       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([email])
+  @@index([status])
+}
+
+enum AuditActionType {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  ACTIVATE
+  DEACTIVATE
+  RESET_PASSWORD
+  IMPERSONATE
+}
+
+enum ManagedUserStatus {
+  Active
+  Inactive
+  Pending
+  Rejected
+}
+
+enum ManagedUserPlan {
+  Basic
+  Pro
+  Enterprise
+}
+
+enum ManagedDocumentStatus {
+  Pending
+  Verified
+  Flagged
+}
+
+enum AdminNotificationStatus {
+  Draft
+  Sent
+  Failed
+}
+
+enum UserNotificationStatus {
+  Delivered
+  Read
+  Clicked
+}
+
+model AuditLog {
+  id              Int                @id @default(autoincrement())
+  adminId         String             // Admin email or ID who performed the action
+  action          AuditActionType
+  targetType      String             // User, GSTFiling, Settings, etc.
+  targetId        String?            // ID of the resource affected
+  targetEmail     String?            // Email of user affected (for user actions)
+  description     String?            // Human-readable action description
+  changes         Json?              // JSON object with before/after values
+  ipAddress       String?
+  userAgent       String?
+  status          String             @default("success") // success, failed
+  errorMessage    String?
+  timestamp       DateTime           @default(now())
+  
+  @@index([adminId])
+  @@index([action])
+  @@index([targetType])
+  @@index([timestamp])
+}
+
+model SystemSettings {
+  id                      Int      @id @default(autoincrement())
+  platformName            String   @default("Smart GST")
+  maxUsersLimit           Int      @default(1000)
+  maxInvoicesPerUser      Int      @default(10000)
+  maxGstFilingsPerUser    Int      @default(100)
+  maintenanceMode         Boolean  @default(false)
+  maintenanceMessage      String?
+  gstApiVersion           String   @default("v2")
+  enableUserSignups       Boolean  @default(true)
+  emailVerificationRequired  Boolean  @default(true)
+  autoGstCalculation      Boolean  @default(true)
+  auditLoggingEnabled     Boolean  @default(true)
+  sessionTimeout          Int      @default(3600) // seconds
+  maxLoginAttempts        Int      @default(5)
+  passwordExpiryDays      Int      @default(90)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model UserManagement {
+  id            Int               @id @default(autoincrement())
+  userId        String            @unique
+  fullName      String
+  email         String
+  mobile        String?
+  status        ManagedUserStatus @default(Pending)
+  plan          ManagedUserPlan   @default(Basic)
+  lastLoginAt   DateTime?
+  deactivatedAt DateTime?
+  deletedAt     DateTime?
+  notes         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([plan])
+  @@index([deletedAt])
+}
+
+model ManagedDocument {
+  id            Int                   @id @default(autoincrement())
+  docKey        String                @unique
+  userId        String?
+  sourceType    String
+  sourceId      String?
+  fileName      String?
+  documentType  String?
+  category      String?
+  status        ManagedDocumentStatus @default(Pending)
+  notes         String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([sourceType])
+}
+
+model AdminNotification {
+  id              Int                     @id @default(autoincrement())
+  notificationKey String                  @unique
+  title           String
+  message         String
+  targetGroup     String
+  deliveryTypes   Json
+  status          AdminNotificationStatus @default(Sent)
+  createdBy       String?
+  sentAt          DateTime?
+  userNotifications UserNotification[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([status])
+  @@index([targetGroup])
+  @@index([createdAt])
+}
+
+model UserNotification {
+  id                  Int                    @id @default(autoincrement())
+  adminNotificationId Int
+  adminNotification   AdminNotification      @relation(fields: [adminNotificationId], references: [id], onDelete: Cascade)
+  userId              String
+  status              UserNotificationStatus @default(Delivered)
+  deliveredAt         DateTime               @default(now())
+  readAt              DateTime?
+  clickedAt           DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([adminNotificationId, userId])
+  @@index([userId, status])
+  @@index([adminNotificationId])
+}
+

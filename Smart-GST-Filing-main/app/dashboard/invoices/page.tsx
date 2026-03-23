@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -89,6 +90,7 @@ type Invoice = {
 }
 
 export default function InvoicesPage() {
+  const searchParams = useSearchParams()
   const { user } = useUser();
   const { toast } = useToast()
   const { clients, loadClients } = useClients(user?.sub)
@@ -304,6 +306,19 @@ export default function InvoicesPage() {
       console.error('Error loading uploads:', error);
     }
   }, [user?.sub]);
+
+  useEffect(() => {
+    const action = (searchParams.get('action') || '').toLowerCase()
+
+    if (action === 'create') {
+      setIsDialogOpen(true)
+      return
+    }
+
+    if (action === 'upload') {
+      setIsUploadOpen(true)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const loadInvoiceDefaults = async () => {

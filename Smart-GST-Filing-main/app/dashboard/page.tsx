@@ -1,11 +1,24 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { FilePlus, Upload, BarChart2, Bell, MessageSquare, Loader2 } from "lucide-react"
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { useBusiness } from "@/contexts/business-context"
-import { dashboardApi, gstFilingApi } from "@/lib/api"
+import { dashboardApi, gstFilingApi, remindersApi, type Reminder } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 type DashboardStats = {
   totalRevenue: number
@@ -24,7 +37,7 @@ type RecentActivity = {
 }
 
 type UpcomingItem = {
-  type: 'invoice' | 'gst'
+  type: 'invoice' | 'gst' | 'reminder'
   title: string
   dueDate: string
   amount?: string
@@ -32,6 +45,7 @@ type UpcomingItem = {
 
 export default function DashboardPage() {
   const [isVisible, setIsVisible] = useState(false)
+  const router = useRouter()
   const { user } = useUser();
   const { selectedBusiness, isLoading: businessLoading } = useBusiness();
   const { toast } = useToast()
@@ -41,6 +55,16 @@ export default function DashboardPage() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity>({ invoices: [], expenses: [] })
   const [upcomingItems, setUpcomingItems] = useState<UpcomingItem[]>([])
   const [gstFilings, setGstFilings] = useState<any[]>([])
+  const [reminderHistory, setReminderHistory] = useState<Reminder[]>([])
+  const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false)
+  const [savingReminder, setSavingReminder] = useState(false)
+  const [reminderForm, setReminderForm] = useState({
+    title: "",
+    description: "",
+    date: new Date().toISOString().split("T")[0],
+    time: "09:00",
+    recipientEmail: "",
+  })
 
   useEffect(() => {
     setIsVisible(true)
@@ -71,7 +95,34 @@ export default function DashboardPage() {
       
       // Load upcoming due dates
       const upcoming = await dashboardApi.getUpcoming(user.sub, 30)
-      setUpcomingItems(upcoming || [])
+
+      // Load user reminders and merge into upcoming list.
+      // If reminders endpoint has an issue, keep dashboard data available.
+      let reminders: Reminder[] = []
+      try {
+        reminders = await remindersApi.getAll(user.sub)
+      } catch (reminderError) {
+        console.warn('Unable to load reminders history:', reminderError)
+      }
+
+      const sortedReminders = [...(reminders || [])].sort(
+        (a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime(),
+      )
+      setReminderHistory(sortedReminders)
+
+      const reminderUpcoming = (reminders || [])
+        .filter((reminder) => reminder.status === 'Pending' && reminder.scheduledFor)
+        .map((reminder) => ({
+          type: 'reminder' as const,
+          title: `Reminder: ${reminder.title}`,
+          dueDate: reminder.scheduledFor,
+        }))
+
+      const mergedUpcoming = [...(upcoming || []), ...reminderUpcoming].sort(
+        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+      )
+
+      setUpcomingItems(mergedUpcoming)
       
       // Load GST filings
       const filings = await gstFilingApi.getAll(user.sub)
@@ -90,6 +141,83 @@ export default function DashboardPage() {
   }
 
   const businessName = selectedBusiness?.name || "Business";
+
+  useEffect(() => {
+    setReminderForm((prev) => ({
+      ...prev,
+      recipientEmail: user?.email || prev.recipientEmail,
+    }))
+  }, [user?.email])
+
+  const handleCreateReminder = async () => {
+    if (!user?.sub) {
+      toast({
+        title: "Error",
+        description: "User not authenticated",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!reminderForm.title.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a reminder title",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!reminderForm.recipientEmail.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter the email for reminder delivery",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const scheduledFor = `${reminderForm.date}T${reminderForm.time}:00`
+
+    try {
+      setSavingReminder(true)
+      await remindersApi.create({
+        userId: user.sub,
+        title: reminderForm.title.trim(),
+        description: reminderForm.description.trim() || undefined,
+        scheduledFor,
+        recipientEmail: reminderForm.recipientEmail.trim().toLowerCase(),
+      })
+
+      toast({
+        title: "Reminder created",
+        description: "Your reminder has been scheduled and email will be sent on time.",
+      })
+
+      setIsReminderDialogOpen(false)
+      setReminderForm((prev) => ({
+        title: "",
+        description: "",
+        date: new Date().toISOString().split("T")[0],
+        time: "09:00",
+        recipientEmail: user?.email || prev.recipientEmail,
+      }))
+
+      loadDashboardData()
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage || 'Failed to create reminder'
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setSavingReminder(false)
+    }
+  }
   
   if (loading || businessLoading || !selectedBusiness) {
     return (
@@ -161,23 +289,111 @@ export default function DashboardPage() {
 
         {/* Quick Actions Row */}
         <div className="flex flex-wrap gap-4 justify-center mt-2">
-          <button className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all" onClick={() => alert('Add Invoice clicked!')}>
+          <button
+            className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => router.push('/dashboard/invoices?action=create')}
+          >
             <FilePlus className="w-5 h-5 text-blue-500" /> Add Invoice
           </button>
-          <label className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all cursor-pointer">
+          <button
+            className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => router.push('/dashboard/invoices?action=upload')}
+          >
             <Upload className="w-5 h-5 text-blue-500" /> Upload Invoice
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => { if (e.target.files && e.target.files[0]) { alert(`Invoice uploaded: ${e.target.files[0].name}`) }}} />
-          </label>
-          <button className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all" onClick={() => { const csv = 'Invoice No,Client,Amount\nINV-001,ABC Corp,1000\nINV-002,XYZ Ltd,2000'; const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'gst-report.csv'; a.click(); URL.revokeObjectURL(url); }}>
+          </button>
+          <button
+            className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => router.push('/dashboard/gst-filing?action=create')}
+          >
             <BarChart2 className="w-5 h-5 text-blue-500" /> GST Report
           </button>
-          <button className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all" onClick={() => { if (window.Notification) { if (Notification.permission === 'granted') { new Notification('GST Filing Reminder', { body: 'Don\'t forget to file your GST returns!' }); } else if (Notification.permission !== 'denied') { Notification.requestPermission().then(permission => { if (permission === 'granted') { new Notification('GST Filing Reminder', { body: 'Don\'t forget to file your GST returns!' }); } }); } } else { alert('Notifications are not supported in this browser.'); } }}>
+          <button
+            className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => setIsReminderDialogOpen(true)}
+          >
             <Bell className="w-5 h-5 text-blue-500" /> Set Reminder
           </button>
-          <button className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all" onClick={() => { alert('Open AI Assistant dialog (implement actual dialog/modal for production)'); }}>
+          <button
+            className="flex items-center gap-2 px-6 py-3 border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => router.push('/dashboard?assistant=open')}
+          >
             <MessageSquare className="w-5 h-5 text-blue-500" /> Chat with AI
           </button>
         </div>
+
+        <Dialog open={isReminderDialogOpen} onOpenChange={setIsReminderDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Set Task Reminder</DialogTitle>
+              <DialogDescription>
+                Create a scheduled reminder. An email will be sent to the registered address at the scheduled time.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="reminder-title">Task title</Label>
+                <Input
+                  id="reminder-title"
+                  value={reminderForm.title}
+                  onChange={(e) => setReminderForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="e.g. File GSTR-3B for March"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reminder-description">Description</Label>
+                <Textarea
+                  id="reminder-description"
+                  value={reminderForm.description}
+                  onChange={(e) => setReminderForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional notes"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="reminder-date">Date</Label>
+                  <Input
+                    id="reminder-date"
+                    type="date"
+                    value={reminderForm.date}
+                    onChange={(e) => setReminderForm((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reminder-time">Time</Label>
+                  <Input
+                    id="reminder-time"
+                    type="time"
+                    value={reminderForm.time}
+                    onChange={(e) => setReminderForm((prev) => ({ ...prev, time: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reminder-email">Reminder email</Label>
+                <Input
+                  id="reminder-email"
+                  type="email"
+                  value={reminderForm.recipientEmail}
+                  onChange={(e) => setReminderForm((prev) => ({ ...prev, recipientEmail: e.target.value }))}
+                  placeholder="your@email.com"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsReminderDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateReminder} disabled={savingReminder}>
+                {savingReminder ? 'Saving...' : 'Save Reminder'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Main Cards Row - Real-time data from backend */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
@@ -261,6 +477,50 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-900">All caught up!</p>
                     <p className="text-xs text-gray-600">No upcoming due dates</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="bg-white/90 backdrop-blur-sm border-0 shadow-lg rounded-2xl p-6 flex flex-col">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Reminder History</h3>
+            <div className="space-y-3">
+              {reminderHistory.length > 0 ? (
+                reminderHistory.slice(0, 10).map((reminder) => (
+                  <div key={reminder.id} className="flex items-start justify-between gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{reminder.title}</p>
+                      <p className="text-xs text-gray-600">
+                        Scheduled: {new Date(reminder.scheduledFor).toLocaleString()}
+                      </p>
+                      {reminder.description && (
+                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{reminder.description}</p>
+                      )}
+                    </div>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        reminder.status === 'Sent'
+                          ? 'bg-green-100 text-green-700'
+                          : reminder.status === 'Failed'
+                            ? 'bg-red-100 text-red-700'
+                            : reminder.status === 'Cancelled'
+                              ? 'bg-gray-100 text-gray-700'
+                              : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {reminder.status || 'Pending'}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <Bell className="w-4 h-4 text-gray-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">No reminders created yet</p>
+                    <p className="text-xs text-gray-600">Use Set Reminder to create your first task reminder.</p>
                   </div>
                 </div>
               )}

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { businessApi } from "@/lib/api"
 import { useRouter } from "next/navigation"
+import { deriveUserRole, getPrimaryEmail } from "@/lib/roles"
 
 export interface Business {
   id: string
@@ -69,6 +70,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const [businessData, setBusinessData] = useState<Business[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const currentUserRole = deriveUserRole(getPrimaryEmail(user as any))
 
   // Fetch user's businesses from backend
   const fetchBusinesses = async () => {
@@ -89,8 +91,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       // If no businesses found, only redirect if user is on a protected route
       if (mappedBusinesses.length === 0) {
         const currentPath = window.location.pathname
-        // Only redirect to setup-business if user is trying to access dashboard or other protected routes
-        if (currentPath.startsWith('/dashboard') || currentPath.startsWith('/admin')) {
+        // Admin users should remain on admin routes even if they have no business profiles.
+        if (currentPath.startsWith('/dashboard') && currentUserRole !== 'admin') {
           router.push("/setup-business")
         }
         return
@@ -125,7 +127,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       // If error fetching businesses, only redirect if on protected route
       if (error.response?.status === 404 && typeof window !== 'undefined') {
         const currentPath = window.location.pathname
-        if (currentPath.startsWith('/dashboard') || currentPath.startsWith('/admin')) {
+        if (currentPath.startsWith('/dashboard') && currentUserRole !== 'admin') {
           router.push("/setup-business")
         }
       }

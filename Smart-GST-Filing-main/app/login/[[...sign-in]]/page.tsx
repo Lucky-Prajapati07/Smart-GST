@@ -9,17 +9,49 @@ export default function Page() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromLogout = searchParams?.get('fromLogout')
+  const accessStatus = (searchParams?.get('access') || '').toLowerCase()
   const [showOptions, setShowOptions] = useState(false)
 
   useEffect(() => {
-    // If coming from logout, show login options
-    if (fromLogout === 'true') {
+    // Show options when returning from logout or when access is blocked by admin state.
+    if (fromLogout === 'true' || !!accessStatus) {
       setShowOptions(true)
     } else {
       // Otherwise, redirect directly to Auth0 login
       router.push('/api/auth/login')
     }
-  }, [router, fromLogout])
+  }, [router, fromLogout, accessStatus])
+
+  const getAccessMessage = () => {
+    if (accessStatus === 'inactive') {
+      return {
+        title: 'Account inactive',
+        description: 'Your account is currently inactive. Please contact the admin to reactivate your access.',
+      }
+    }
+    if (accessStatus === 'rejected') {
+      return {
+        title: 'Access rejected',
+        description: 'Your account approval was rejected. Contact the admin for further assistance.',
+      }
+    }
+    if (accessStatus === 'pending') {
+      return {
+        title: 'Approval pending',
+        description: 'Your account is awaiting admin approval. Try again after approval is completed.',
+      }
+    }
+    if (accessStatus === 'deleted') {
+      return {
+        title: 'Account removed',
+        description: 'This account was removed by admin. Please sign up again to continue.',
+      }
+    }
+
+    return null
+  }
+
+  const accessMessage = getAccessMessage()
 
   const handleAdminLogin = () => {
     // Redirect to Auth0 login with admin hint
@@ -54,6 +86,13 @@ export default function Page() {
             </h1>
             <p className="text-gray-600 text-lg">Choose how you want to sign in</p>
           </div>
+
+          {accessMessage && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+              <p className="font-semibold">{accessMessage.title}</p>
+              <p className="text-sm mt-1">{accessMessage.description}</p>
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-6">
             {/* Admin Login Card */}

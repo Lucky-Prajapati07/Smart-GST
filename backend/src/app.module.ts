@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,9 +12,12 @@ import { GstFilingModule } from './gst-filing/gst-filing.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BusinessModule } from './business/business.module';
+import { AdminModule } from './admin/admin.module';
+import { RemindersModule } from './reminders/reminders.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     PrismaModule,
     ClientsModule,
     TransactionsModule,
@@ -24,6 +28,8 @@ import { BusinessModule } from './business/business.module';
     ReportsModule,
     DashboardModule,
     BusinessModule,
+    AdminModule,
+    RemindersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

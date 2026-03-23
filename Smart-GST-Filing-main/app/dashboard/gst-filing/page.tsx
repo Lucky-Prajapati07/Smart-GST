@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -153,6 +154,7 @@ const pickBestLocalPreview = (filings: GSTFiling[]): GstPreviewMetrics => {
 }
 
 export default function GSTFilingPage() {
+  const searchParams = useSearchParams()
   const { user, isLoading: userLoading } = useUser()
   const { toast } = useToast()
   const [isVisible, setIsVisible] = useState(false)
@@ -183,6 +185,13 @@ export default function GSTFilingPage() {
       loadFilings()
     }
   }, [user?.sub])
+
+  useEffect(() => {
+    const action = (searchParams.get('action') || '').toLowerCase()
+    if (action === 'create') {
+      setIsDialogOpen(true)
+    }
+  }, [searchParams])
 
   const loadFilings = async () => {
     if (!user?.sub) return

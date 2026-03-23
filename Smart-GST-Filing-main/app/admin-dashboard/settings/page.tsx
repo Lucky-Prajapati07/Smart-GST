@@ -31,98 +31,141 @@ import {
   Clock,
   Key,
   Activity,
+  Loader,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "@/hooks/use-toast"
 
-const adminUsers = [
-  {
-    id: "ADM-001",
-    name: "Super Admin",
-    email: "superadmin@gstfiling.com",
-    role: "Superadmin",
-    status: "Active",
-    lastLogin: "2024-12-16 10:30 AM",
-    createdDate: "2024-01-01",
-    permissions: ["All Access"],
-  },
-  {
-    id: "ADM-002",
-    name: "John Manager",
-    email: "john@gstfiling.com",
-    role: "Editor",
-    status: "Active",
-    lastLogin: "2024-12-15 04:45 PM",
-    createdDate: "2024-02-15",
-    permissions: ["User Management", "Business Profiles", "Filing Monitor"],
-  },
-  {
-    id: "ADM-003",
-    name: "Sarah Viewer",
-    email: "sarah@gstfiling.com",
-    role: "Viewer",
-    status: "Active",
-    lastLogin: "2024-12-14 02:20 PM",
-    createdDate: "2024-03-10",
-    permissions: ["View Only"],
-  },
-  {
-    id: "ADM-004",
-    name: "Mike Support",
-    email: "mike@gstfiling.com",
-    role: "Editor",
-    status: "Inactive",
-    lastLogin: "2024-12-10 11:15 AM",
-    createdDate: "2024-04-05",
-    permissions: ["Document Center", "Notifications"],
-  },
-]
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
-const activityLogs = [
-  {
-    id: "LOG-001",
-    admin: "Super Admin",
-    action: "User account created",
-    details: "Created new user account for Rajesh Kumar",
-    timestamp: "2024-12-16 10:45 AM",
-    ipAddress: "192.168.1.100",
-  },
-  {
-    id: "LOG-002",
-    admin: "John Manager",
-    action: "Business verified",
-    details: "Verified business profile for Kumar Enterprises",
-    timestamp: "2024-12-16 09:30 AM",
-    ipAddress: "192.168.1.101",
-  },
-  {
-    id: "LOG-003",
-    admin: "Sarah Viewer",
-    action: "Report generated",
-    details: "Generated monthly filing report",
-    timestamp: "2024-12-15 03:15 PM",
-    ipAddress: "192.168.1.102",
-  },
-  {
-    id: "LOG-004",
-    admin: "John Manager",
-    action: "Document flagged",
-    details: "Flagged suspicious document for review",
-    timestamp: "2024-12-15 11:20 AM",
-    ipAddress: "192.168.1.101",
-  },
-]
+type SystemSettingsType = {
+  maintenanceMode: boolean
+  emailNotifications?: boolean
+  debugLogging?: boolean
+  apiRateLimiting?: boolean
+  twoFactorAuth?: boolean
+  autoBackup?: boolean
+}
+
+type AdminUser = {
+  id: number
+  email: string
+  name: string
+  role: string
+  status: string
+  lastLogin?: string
+  createdAt: string
+}
+
+type ActivityLog = {
+  id: number
+  adminId: string
+  action: string
+  targetType: string
+  description?: string
+  timestamp: string
+  ipAddress?: string
+}
 
 export default function AdminSettingsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [admins, setAdmins] = useState<AdminUser[]>([])
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
+  const [systemSettings, setSystemSettings] = useState<SystemSettingsType>({
+    maintenanceMode: false,
+    emailNotifications: true,
+    debugLogging: false,
+    apiRateLimiting: true,
+    twoFactorAuth: true,
+    autoBackup: true,
+  })
+
   const [newAdmin, setNewAdmin] = useState({
     name: "",
     email: "",
-    role: "viewer",
-    permissions: [] as string[],
+    role: "admin",
   })
 
-  const handleCreateAdmin = () => {
+  // Fetch data on mount
+  useEffect(() => {
+    fetchAllData()
+  }, [])
+
+  const fetchAllData = async () => {
+    try {
+      setIsLoading(true)
+      await Promise.all([
+        fetchSystemSettings(),
+        fetchAdminUsers(),
+        fetchActivityLogs(),
+      ])
+    } catch (error) {
+      console.error("Error fetching data:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load admin settings data",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchSystemSettings = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/settings`, {
+        cache: "no-store",
+      })
+      const data = await response.json()
+      
+      if (data.success && data.data) {
+        setSystemSettings({
+          maintenanceMode: data.data.maintenanceMode || false,
+          emailNotifications: data.data.emailNotifications !== false,
+          debugLogging: data.data.debugLogging || false,
+          apiRateLimiting: data.data.apiRateLimiting !== false,
+          twoFactorAuth: data.data.twoFactorAuth !== false,
+          autoBackup: data.data.autoBackup !== false,
+        })
+      }
+    } catch (error) {
+      console.error("Error fetching system settings:", error)
+    }
+  }
+
+  const fetchAdminUsers = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/admins?limit=100`, {
+        cache: "no-store",
+      })
+      const data = await response.json()
+      
+      if (data.success && data.data?.admins) {
+        setAdmins(data.data.admins)
+      }
+    } catch (error) {
+      console.error("Error fetching admin users:", error)
+    }
+  }
+
+  const fetchActivityLogs = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/audit-logs?limit=50&page=1`, {
+        cache: "no-store",
+      })
+      const data = await response.json()
+      
+      if (data.success && data.data?.logs) {
+        setActivityLogs(data.data.logs)
+      }
+    } catch (error) {
+      console.error("Error fetching activity logs:", error)
+    }
+  }
+
+  const handleCreateAdmin = async () => {
     if (!newAdmin.name || !newAdmin.email || !newAdmin.role) {
       toast({
         title: "Validation Error",
@@ -132,139 +175,248 @@ export default function AdminSettingsPage() {
       return
     }
 
-    toast({
-      title: "Admin Created",
-      description: `Admin user ${newAdmin.name} has been created successfully.`,
-    })
+    try {
+      setIsSaving(true)
+      const response = await fetch(`${API_BASE_URL}/admin/admins`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newAdmin.name,
+          email: newAdmin.email,
+          role: newAdmin.role,
+        }),
+      })
 
-    setNewAdmin({
-      name: "",
-      email: "",
-      role: "viewer",
-      permissions: [],
-    })
-    setIsCreateDialogOpen(false)
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: `Admin user ${newAdmin.name} has been created successfully.`,
+        })
+        setNewAdmin({ name: "", email: "", role: "admin" })
+        setIsCreateDialogOpen(false)
+        await fetchAdminUsers()
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to create admin user",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create admin user",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleToggleAdminStatus = (adminId: string, currentStatus: string) => {
+  const handleToggleAdminStatus = async (adminId: number, currentStatus: string) => {
     const newStatus = currentStatus === "Active" ? "Inactive" : "Active"
-    toast({
-      title: "Admin Status Updated",
-      description: `Admin status changed to ${newStatus}`,
-    })
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/admins/${adminId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: `Admin status changed to ${newStatus}`,
+        })
+        await fetchAdminUsers()
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to update admin status",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update admin status",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleResetPassword = (adminId: string, adminEmail: string) => {
-    toast({
-      title: "Password Reset",
-      description: `Password reset link sent to ${adminEmail}`,
-    })
+  const handleDeleteAdmin = async (adminId: number, adminEmail: string) => {
+    if (!confirm(`Are you sure you want to delete admin ${adminEmail}?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/admins/${adminId}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: `Admin ${adminEmail} has been deleted.`,
+        })
+        await fetchAdminUsers()
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to delete admin",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete admin",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUpdateSystemSettings = async (key: string, value: boolean) => {
+    try {
+      setIsSaving(true)
+      const updateData: any = {}
+      updateData[key] = value
+
+      const response = await fetch(`${API_BASE_URL}/admin/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setSystemSettings({ ...systemSettings, [key]: value })
+        toast({
+          title: "Success",
+          description: "System settings updated successfully",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to update settings",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update settings",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-3">
+            <Loader className="w-8 h-8 animate-spin text-blue-600" />
+            <p className="text-gray-600">Loading admin settings...</p>
+          </div>
+        </div>
+      </AdminLayout>
+    )
   }
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Admin Settings</h1>
-            <p className="text-gray-600">Manage admin users, roles, and system settings</p>
-          </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Admin
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Create New Admin User</DialogTitle>
-                <DialogDescription>Add a new administrator with specific permissions</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="adminName">Full Name *</Label>
-                    <Input
-                      id="adminName"
-                      placeholder="Enter full name"
-                      value={newAdmin.name}
-                      onChange={(e) => setNewAdmin({ ...newAdmin, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="adminEmail">Email *</Label>
-                    <Input
-                      id="adminEmail"
-                      type="email"
-                      placeholder="admin@gstfiling.com"
-                      value={newAdmin.email}
-                      onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
-                    />
-                  </div>
+        <div className="relative overflow-hidden rounded-2xl shadow-sm">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-700 via-indigo-600 to-purple-600" />
+          <div className="relative px-6 py-6 md:px-8 md:py-7 text-white">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center backdrop-blur-sm">
+                  <Settings className="w-6 h-6 text-white" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="adminRole">Role *</Label>
-                  <Select value={newAdmin.role} onValueChange={(value) => setNewAdmin({ ...newAdmin, role: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="viewer">Viewer</SelectItem>
-                      <SelectItem value="editor">Editor</SelectItem>
-                      <SelectItem value="superadmin">Superadmin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Permissions</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      "User Management",
-                      "Business Profiles",
-                      "Filing Monitor",
-                      "Document Center",
-                      "Notifications",
-                      "Analytics",
-                    ].map((permission) => (
-                      <div key={permission} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={permission}
-                          className="rounded"
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setNewAdmin({
-                                ...newAdmin,
-                                permissions: [...newAdmin.permissions, permission],
-                              })
-                            } else {
-                              setNewAdmin({
-                                ...newAdmin,
-                                permissions: newAdmin.permissions.filter((p) => p !== permission),
-                              })
-                            }
-                          }}
-                        />
-                        <Label htmlFor={permission} className="text-sm">
-                          {permission}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateAdmin} className="bg-blue-600 hover:bg-blue-700">
-                    Create Admin
-                  </Button>
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Admin Settings</h1>
+                  <p className="text-sm md:text-base text-blue-100">Manage admin users, roles, and system settings</p>
                 </div>
               </div>
-            </DialogContent>
-          </Dialog>
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-white text-blue-700 hover:bg-blue-50">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Admin
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Create New Admin User</DialogTitle>
+                    <DialogDescription>Add a new administrator to manage the system</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="adminName">Full Name *</Label>
+                        <Input
+                          id="adminName"
+                          placeholder="Enter full name"
+                          value={newAdmin.name}
+                          onChange={(e) => setNewAdmin({ ...newAdmin, name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="adminEmail">Email *</Label>
+                        <Input
+                          id="adminEmail"
+                          type="email"
+                          placeholder="admin@gstfiling.com"
+                          value={newAdmin.email}
+                          onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="adminRole">Role *</Label>
+                      <Select value={newAdmin.role} onValueChange={(value) => setNewAdmin({ ...newAdmin, role: value })}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="superadmin">Superadmin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleCreateAdmin} className="bg-blue-600 hover:bg-blue-700" disabled={isSaving}>
+                        {isSaving ? (
+                          <>
+                            <Loader className="w-4 h-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create Admin"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
         </div>
 
         {/* System Settings */}
@@ -284,21 +436,33 @@ export default function AdminSettingsPage() {
                     <Label className="text-base font-medium">Two-Factor Authentication</Label>
                     <p className="text-sm text-gray-500">Require 2FA for all admin accounts</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={systemSettings.twoFactorAuth}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("twoFactorAuth", value)}
+                    disabled={isSaving}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-base font-medium">Email Notifications</Label>
                     <p className="text-sm text-gray-500">Send email alerts for critical events</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={systemSettings.emailNotifications}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("emailNotifications", value)}
+                    disabled={isSaving}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-base font-medium">Auto Backup</Label>
                     <p className="text-sm text-gray-500">Automatic daily database backups</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={systemSettings.autoBackup}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("autoBackup", value)}
+                    disabled={isSaving}
+                  />
                 </div>
               </div>
               <div className="space-y-4">
@@ -307,21 +471,33 @@ export default function AdminSettingsPage() {
                     <Label className="text-base font-medium">Maintenance Mode</Label>
                     <p className="text-sm text-gray-500">Enable maintenance mode for updates</p>
                   </div>
-                  <Switch />
+                  <Switch 
+                    checked={systemSettings.maintenanceMode}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("maintenanceMode", value)}
+                    disabled={isSaving}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-base font-medium">Debug Logging</Label>
                     <p className="text-sm text-gray-500">Enable detailed system logging</p>
                   </div>
-                  <Switch />
+                  <Switch 
+                    checked={systemSettings.debugLogging}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("debugLogging", value)}
+                    disabled={isSaving}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-base font-medium">API Rate Limiting</Label>
                     <p className="text-sm text-gray-500">Limit API requests per user</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={systemSettings.apiRateLimiting}
+                    onCheckedChange={(value) => handleUpdateSystemSettings("apiRateLimiting", value)}
+                    disabled={isSaving}
+                  />
                 </div>
               </div>
             </div>
@@ -333,115 +509,98 @@ export default function AdminSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="w-5 h-5" />
-              Admin Users ({adminUsers.length})
+              Admin Users ({admins.length})
             </CardTitle>
             <CardDescription>Manage administrator accounts and permissions</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Admin ID</TableHead>
-                    <TableHead>Name & Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Permissions</TableHead>
-                    <TableHead>Last Login</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {adminUsers.map((admin) => (
-                    <TableRow key={admin.id}>
-                      <TableCell className="font-medium">{admin.id}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{admin.name}</div>
-                          <div className="text-sm text-gray-500">{admin.email}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            admin.role === "Superadmin" ? "default" : admin.role === "Editor" ? "secondary" : "outline"
-                          }
-                        >
-                          {admin.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {admin.permissions.slice(0, 2).map((permission, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {permission}
-                            </Badge>
-                          ))}
-                          {admin.permissions.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{admin.permissions.length - 2} more
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>{admin.lastLogin}</div>
-                          <div className="text-gray-500">Created: {admin.createdDate}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={admin.status === "Active" ? "default" : "secondary"}>
-                          {admin.status === "Active" ? (
-                            <UserCheck className="w-3 h-3 mr-1" />
-                          ) : (
-                            <UserX className="w-3 h-3 mr-1" />
-                          )}
-                          {admin.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit Permissions
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleResetPassword(admin.id, admin.email)}>
-                              <Key className="w-4 h-4 mr-2" />
-                              Reset Password
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleAdminStatus(admin.id, admin.status)}>
-                              {admin.status === "Active" ? (
-                                <UserX className="w-4 h-4 mr-2" />
-                              ) : (
-                                <UserCheck className="w-4 h-4 mr-2" />
-                              )}
-                              {admin.status === "Active" ? "Deactivate" : "Activate"}
-                            </DropdownMenuItem>
-                            {admin.role !== "Superadmin" && (
-                              <DropdownMenuItem className="text-red-600">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete Admin
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+            {admins.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No admin users found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Admin ID</TableHead>
+                      <TableHead>Name & Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Last Login</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {admins.map((admin) => (
+                      <TableRow key={admin.id}>
+                        <TableCell className="font-medium">{admin.id}</TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{admin.name}</div>
+                            <div className="text-sm text-gray-500">{admin.email}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={admin.role === "superadmin" ? "default" : "secondary"}
+                          >
+                            {admin.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {admin.lastLogin ? new Date(admin.lastLogin).toLocaleString() : "Never"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={admin.status === "Active" ? "default" : "secondary"}>
+                            {admin.status === "Active" ? (
+                              <UserCheck className="w-3 h-3 mr-1" />
+                            ) : (
+                              <UserX className="w-3 h-3 mr-1" />
+                            )}
+                            {admin.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem>
+                                <Eye className="w-4 h-4 mr-2" />
+                                View Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleAdminStatus(admin.id, admin.status)}>
+                                {admin.status === "Active" ? (
+                                  <UserX className="w-4 h-4 mr-2" />
+                                ) : (
+                                  <UserCheck className="w-4 h-4 mr-2" />
+                                )}
+                                {admin.status === "Active" ? "Deactivate" : "Activate"}
+                              </DropdownMenuItem>
+                              {admin.role !== "superadmin" && (
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteAdmin(admin.id, admin.email)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Admin
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -455,48 +614,54 @@ export default function AdminSettingsPage() {
             <CardDescription>Monitor admin user activities and system changes</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Log ID</TableHead>
-                    <TableHead>Admin User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Details</TableHead>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>IP Address</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activityLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="font-medium">{log.id}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-blue-600" />
-                          {log.admin}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{log.action}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate text-sm">{log.details}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-gray-400" />
-                          {log.timestamp}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-mono text-sm">{log.ipAddress}</div>
-                      </TableCell>
+            {activityLogs.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No activity logs found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Log ID</TableHead>
+                      <TableHead>Admin User</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Target</TableHead>
+                      <TableHead>Details</TableHead>
+                      <TableHead>Timestamp</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {activityLogs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="font-medium">{log.id}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-blue-600" />
+                            {log.adminId}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{log.action}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{log.targetType}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="max-w-xs truncate text-sm">{log.description || "-"}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm">
+                            <Clock className="w-3 h-3 text-gray-400" />
+                            {new Date(log.timestamp).toLocaleString()}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -30,16 +30,17 @@ import {
   BarChart3,
   Settings,
   Bell,
-  User,
   ChevronDown,
   Building,
-  Crown,
   CheckCircle,
   IndianRupee,
   MapPin,
   Phone,
   Mail,
   Sparkles,
+  X,
+  Minimize2,
+  Maximize2,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -50,6 +51,9 @@ import { useEffect } from 'react'
 import { deriveUserRole, getPrimaryEmail } from '@/lib/roles'
 import { useRouter } from 'next/navigation'
 import { useBusiness } from "@/contexts/business-context"
+import { useState } from "react"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
 const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
@@ -67,6 +71,25 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user } = useUser()
   const { selectedBusiness, setSelectedBusiness, businessData, isLoading: businessLoading } = useBusiness()
   const router = useRouter()
+  const [headerNotifications, setHeaderNotifications] = useState<Array<{
+    id: number
+    title: string
+    message: string
+    status: string
+    createdAt: string
+  }>>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isNotificationLoading, setIsNotificationLoading] = useState(false)
+  const [isNotificationWindowOpen, setIsNotificationWindowOpen] = useState(false)
+  const [isNotificationWindowMinimized, setIsNotificationWindowMinimized] = useState(false)
+  const [selectedNotification, setSelectedNotification] = useState<{
+    id: number
+    title: string
+    message: string
+    status: string
+    createdAt: string
+  } | null>(null)
+  const userId = (user as any)?.sub || ""
 
   // If an admin signs in and is sent to /dashboard (default), redirect them to /admin-dashboard automatically
   useEffect(() => {
@@ -77,6 +100,91 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       }
     }
   }, [user, pathname, router])
+
+  const loadHeaderNotifications = async () => {
+    if (!userId) {
+      setHeaderNotifications([])
+      setUnreadCount(0)
+      return
+    }
+
+    try {
+      setIsNotificationLoading(true)
+      const response = await fetch(`${API_BASE_URL}/admin/notifications/user/${encodeURIComponent(userId)}?page=1&limit=8`)
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        return
+      }
+
+      setHeaderNotifications(payload.data?.notifications || [])
+      setUnreadCount(payload.data?.unreadCount || 0)
+    } catch {
+      // Keep UI resilient; notification loading should not block dashboard rendering.
+      setHeaderNotifications([])
+      setUnreadCount(0)
+    } finally {
+      setIsNotificationLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadHeaderNotifications()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!userId) {
+      return
+    }
+    try {
+      await fetch(`${API_BASE_URL}/admin/notifications/user/${encodeURIComponent(userId)}/read-all`, {
+        method: "PATCH",
+      })
+      await loadHeaderNotifications()
+    } catch {
+      // Ignore to avoid interrupting primary dashboard interactions.
+    }
+  }
+
+  const handleNotificationClick = async (notificationId: number) => {
+    if (!userId) {
+      return
+    }
+    try {
+      await fetch(
+        `${API_BASE_URL}/admin/notifications/user/${encodeURIComponent(userId)}/${notificationId}/click`,
+        { method: "PATCH" }
+      )
+      await fetch(
+        `${API_BASE_URL}/admin/notifications/user/${encodeURIComponent(userId)}/${notificationId}/read`,
+        { method: "PATCH" }
+      )
+      await loadHeaderNotifications()
+    } catch {
+      // Ignore click tracking failures in header UI.
+    }
+  }
+
+  const handleOpenNotificationDetail = async (notification: {
+    id: number
+    title: string
+    message: string
+    status: string
+    createdAt: string
+  }) => {
+    setSelectedNotification(notification)
+    await handleNotificationClick(notification.id)
+  }
+
+  const handleToggleNotificationWindow = async () => {
+    const nextOpenState = !isNotificationWindowOpen
+    setIsNotificationWindowOpen(nextOpenState)
+
+    if (nextOpenState) {
+      setIsNotificationWindowMinimized(false)
+      await loadHeaderNotifications()
+    }
+  }
 
   const handleBusinessSwitch = (business: typeof businessData[0]) => {
     setSelectedBusiness(business)
@@ -216,43 +324,24 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <SidebarFooter className="p-3 border-t border-gray-100">
             <SidebarMenu>
               <SidebarMenuItem>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <SidebarMenuButton className="h-10 hover:bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3 w-full">
-                        <Avatar className="h-7 w-7 border-2 border-blue-100">
-                          <AvatarImage src={user?.picture || undefined} />
-                          <AvatarFallback className="bg-blue-100 text-blue-700 text-xs font-semibold">
-                            {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {user?.name || 'User'}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {user?.email}
-                          </p>
-                        </div>
-                        <ChevronDown className="w-3 h-3 text-gray-400" />
-                      </div>
-                    </SidebarMenuButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" className="w-[240px]" align="start">
-                    <DropdownMenuItem className="flex items-center space-x-3 p-3">
-                      <User className="w-4 h-4 text-gray-500" />
-                      <span>View Profile</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="flex items-center space-x-3 p-3">
-                      <Settings className="w-4 h-4 text-gray-500" />
-                      <span>Account Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="flex items-center space-x-3 p-3">
-                      <Crown className="w-4 h-4 text-yellow-500" />
-                      <span>Upgrade Plan</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <SidebarMenuButton className="h-10 rounded-lg cursor-default">
+                  <div className="flex items-center space-x-3 w-full">
+                    <Avatar className="h-7 w-7 border-2 border-blue-100">
+                      <AvatarImage src={user?.picture || undefined} />
+                      <AvatarFallback className="bg-blue-100 text-blue-700 text-xs font-semibold">
+                        {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {user?.name || 'User'}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {user?.email}
+                      </p>
+                    </div>
+                  </div>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarFooter>
@@ -263,8 +352,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <div className="flex-1" />
             <LanguageSwitcher />
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="relative" onClick={handleToggleNotificationWindow}>
               <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -292,6 +386,87 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <main className="flex-1 p-6">{children}</main>
         </SidebarInset>
       </div>
+
+      {isNotificationWindowOpen && (
+        <div className="fixed right-4 top-20 z-50 w-[360px] rounded-xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Notifications</p>
+              <p className="text-[11px] text-gray-500">{unreadCount} unread</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setIsNotificationWindowMinimized((prev) => !prev)}
+              >
+                {isNotificationWindowMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsNotificationWindowOpen(false)}>
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          {!isNotificationWindowMinimized && (
+            <div className="max-h-[520px] overflow-hidden">
+              <div className="flex items-center justify-between border-b px-3 py-2">
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleMarkAllNotificationsRead}>
+                  Mark all read
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setSelectedNotification(null)}
+                  disabled={!selectedNotification}
+                >
+                  Back to list
+                </Button>
+              </div>
+
+              {!selectedNotification ? (
+                <div className="max-h-[430px] overflow-y-auto px-2 py-2">
+                  {isNotificationLoading ? (
+                    <div className="px-3 py-6 text-sm text-gray-500 text-center">Loading notifications...</div>
+                  ) : headerNotifications.length === 0 ? (
+                    <div className="px-3 py-6 text-sm text-gray-500 text-center">No notifications yet.</div>
+                  ) : (
+                    headerNotifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        className="w-full rounded-lg border border-transparent px-3 py-2 text-left hover:border-blue-100 hover:bg-blue-50"
+                        onClick={() => handleOpenNotificationDetail(notification)}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm truncate">{notification.title}</span>
+                            {notification.status === "Delivered" && (
+                              <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2">{notification.message}</p>
+                          <p className="text-[11px] text-gray-400">{new Date(notification.createdAt).toLocaleString()}</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="max-h-[430px] overflow-y-auto px-4 py-3">
+                  <h3 className="text-base font-semibold text-gray-900">{selectedNotification.title}</h3>
+                  <p className="mt-1 text-xs text-gray-500">{new Date(selectedNotification.createdAt).toLocaleString()}</p>
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-sm leading-6 text-gray-700 whitespace-pre-wrap">{selectedNotification.message}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <AIAssistant />
     </SidebarProvider>

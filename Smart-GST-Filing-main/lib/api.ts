@@ -651,6 +651,43 @@ export const dashboardApi = {
     return response.data;
   },
 };
+
+export interface Reminder {
+  id?: number;
+  userId: string;
+  title: string;
+  description?: string;
+  scheduledFor: string;
+  recipientEmail: string;
+  status?: 'Pending' | 'Sent' | 'Cancelled' | 'Failed';
+  sentAt?: string | null;
+  lastError?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const remindersApi = {
+  create: async (reminderData: Omit<Reminder, 'id' | 'status' | 'sentAt' | 'lastError' | 'createdAt' | 'updatedAt'>) => {
+    const response = await apiClient.post('/reminders', reminderData);
+    return response.data;
+  },
+
+  getAll: async (userId: string): Promise<Reminder[]> => {
+    const response = await apiClient.get(`/reminders?userId=${encodeURIComponent(userId)}`);
+    return response.data;
+  },
+
+  update: async (userId: string, id: number, updateData: Partial<Reminder>): Promise<Reminder> => {
+    const response = await apiClient.patch(`/reminders/${id}?userId=${encodeURIComponent(userId)}`, updateData);
+    return response.data;
+  },
+
+  delete: async (userId: string, id: number): Promise<{ message: string }> => {
+    const response = await apiClient.delete(`/reminders/${id}?userId=${encodeURIComponent(userId)}`);
+    return response.data;
+  },
+};
+
 // Business API
 export interface Business {
   id?: number;

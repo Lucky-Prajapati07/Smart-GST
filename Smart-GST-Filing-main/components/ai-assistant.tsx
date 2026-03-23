@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +16,9 @@ interface Message {
 }
 
 export function AIAssistant() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -25,6 +29,19 @@ export function AIAssistant() {
     },
   ])
   const [inputValue, setInputValue] = useState("")
+
+  useEffect(() => {
+    if (searchParams.get('assistant') !== 'open') {
+      return
+    }
+
+    setIsOpen(true)
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('assistant')
+    const nextQuery = params.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname)
+  }, [pathname, router, searchParams])
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return
