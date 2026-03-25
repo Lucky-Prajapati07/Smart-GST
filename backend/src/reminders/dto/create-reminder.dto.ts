@@ -19,7 +19,7 @@ export class CreateReminderDto {
   @IsDateString()
   scheduledFor: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsEmail()
-  recipientEmail: string;
+  recipientEmail?: string;
 }

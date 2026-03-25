@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -32,7 +33,7 @@ export class RemindersController {
   @Get()
   async findAll(@Query('userId') userId: string): Promise<ReminderResponseDto[]> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
 
     return this.remindersService.findAllByUser(userId);
@@ -45,7 +46,7 @@ export class RemindersController {
     @Body(ValidationPipe) updateReminderDto: UpdateReminderDto,
   ): Promise<ReminderResponseDto> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
 
     return this.remindersService.update(id, userId, updateReminderDto);
@@ -58,7 +59,7 @@ export class RemindersController {
     @Query('userId') userId: string,
   ): Promise<{ message: string }> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
 
     return this.remindersService.remove(id, userId);

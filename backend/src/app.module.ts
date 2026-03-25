@@ -14,6 +14,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { BusinessModule } from './business/business.module';
 import { AdminModule } from './admin/admin.module';
 import { RemindersModule } from './reminders/reminders.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { RemindersModule } from './reminders/reminders.module';
     BusinessModule,
     AdminModule,
     RemindersModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

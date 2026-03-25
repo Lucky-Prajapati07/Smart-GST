@@ -1,7 +1,6 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { LanguageSwitcher } from "@/components/language-switcher"
 import { Menu, X } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
@@ -29,16 +28,18 @@ export function Navbar() {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-8">
+            <Link href="/#top" className="text-gray-600 hover:text-gray-900 transition-colors">
+              Home
+            </Link>
             <Link href="#features" className="text-gray-600 hover:text-gray-900 transition-colors">
               {t('navbar.features')}
             </Link>
-            <Link href="/pricing" className="text-gray-600 hover:text-gray-900 transition-colors">
+            <Link href="/#pricing" className="text-gray-600 hover:text-gray-900 transition-colors">
               {t('navbar.pricing')}
             </Link>
-            <Link href="/help" className="text-gray-600 hover:text-gray-900 transition-colors">
+            <Link href="/#help" className="text-gray-600 hover:text-gray-900 transition-colors">
               {t('navbar.help')}
             </Link>
-            <LanguageSwitcher />
             
             {/* Authentication Buttons */}
             {!user && !isLoading && (
@@ -84,7 +85,6 @@ export function Navbar() {
 
           {/* Mobile Menu Button */}
           <div className="md:hidden flex items-center space-x-2">
-            <LanguageSwitcher />
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -119,6 +119,13 @@ export function Navbar() {
           <div className="md:hidden border-t border-gray-200 py-4">
             <div className="flex flex-col space-y-4">
               <Link
+                href="/#top"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Home
+              </Link>
+              <Link
                 href="#features"
                 className="text-gray-600 hover:text-gray-900 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
@@ -126,14 +133,14 @@ export function Navbar() {
                 {t('navbar.features')}
               </Link>
               <Link
-                href="/pricing"
+                href="/#pricing"
                 className="text-gray-600 hover:text-gray-900 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 {t('navbar.pricing')}
               </Link>
               <Link
-                href="/help"
+                href="/#help"
                 className="text-gray-600 hover:text-gray-900 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >

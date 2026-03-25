@@ -15,7 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Filter as FilterIcon, MoreHorizontal, Download, Edit, Trash2, Eye, Send, FileText, DollarSign, Calendar, ShoppingCart, TrendingUp, Camera, X, FolderOpen, RefreshCw } from "lucide-react"
-import { invoicesApi, settingsApi, type InvoiceResponse } from "@/lib/api"
+import { invoicesApi, settingsApi, type InvoiceOcrExtractResult, type InvoiceResponse } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useClients } from "@/hooks/use-clients"
 import jsPDF from "jspdf"
@@ -93,7 +93,7 @@ export default function InvoicesPage() {
   const searchParams = useSearchParams()
   const { user } = useUser();
   const { toast } = useToast()
-  const { clients, loadClients } = useClients(user?.sub)
+  const { clients, loadClients } = useClients(user?.sub ?? undefined)
   const [isVisible, setIsVisible] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState("all")
@@ -208,6 +208,7 @@ export default function InvoicesPage() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [editingInvoiceKey, setEditingInvoiceKey] = useState<string | null>(null)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -216,76 +217,27 @@ export default function InvoicesPage() {
   // Attach uploaded file state for OCR upload
   const [uploadedFile, setUploadedFile] = useState<{ name: string; type: string; size: number; url: string | null } | null>(null)
 
-  // Upload dialog + history (align to main dashboard)
-  type UploadedMeta = { id: string; name: string; type: string; size: number; url: string; createdAt: string }
+  // Upload dialog + OCR queue
+  type UploadedMeta = {
+    id: string
+    name: string
+    type: string
+    size: number
+    url: string
+    createdAt: string
+    file?: File
+    ocrResult?: InvoiceOcrExtractResult
+    ocrError?: string
+  }
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [uploadsQueue, setUploadsQueue] = useState<UploadedMeta[]>([])
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const UPLOADS_LS_KEY = "app:invoiceUploads"
 
-  // Stored files (manual OCR upload) state
+  // Stored files from OCR extraction
   const [isStoredOpen, setIsStoredOpen] = useState(false)
-  const storedFiles: {
-    id: string
-    name: string
-    data: {
-      invoiceType: "sale" | "purchase"
-      date: string
-      party: string
-      partyGSTIN: string
-      items: Array<{ itemName: string; hsnCode: string; quantity: number; price: number; discount: number; taxRate: number }>
-      notes?: string
-      eWayBill?: string
-      transportMode?: string
-    }
-  }[] = [
-    {
-      id: "SAMPLE-001",
-      name: "ABC_Enterprises_INV_Nov.pdf",
-      data: {
-        invoiceType: "sale",
-        date: "2024-12-10",
-        party: "ABC Enterprises",
-        partyGSTIN: "27ABCDE1234F1Z5",
-        items: [
-          { itemName: "Consulting Services", hsnCode: "9983", quantity: 1, price: 25000, discount: 0, taxRate: 18 },
-          { itemName: "Implementation", hsnCode: "9983", quantity: 1, price: 4500, discount: 0, taxRate: 18 },
-        ],
-        notes: "Auto-imported via Stored Files",
-        transportMode: "road",
-      },
-    },
-    {
-      id: "SAMPLE-002",
-      name: "SupplierLtd_PUR_Dec.pdf",
-      data: {
-        invoiceType: "purchase",
-        date: "2024-12-11",
-        party: "Supplier Ltd",
-        partyGSTIN: "29XYZAB5678G2H6",
-        items: [
-          { itemName: "Office Supplies", hsnCode: "4819", quantity: 5, price: 500, discount: 5, taxRate: 12 },
-          { itemName: "Printer Cartridges", hsnCode: "8443", quantity: 2, price: 1500, discount: 0, taxRate: 18 },
-        ],
-        eWayBill: "EWB1234567",
-        transportMode: "road",
-      },
-    },
-    {
-      id: "SAMPLE-003",
-      name: "TechSolutions_INV_Dec.pdf",
-      data: {
-        invoiceType: "sale",
-        date: "2024-12-12",
-        party: "Tech Solutions",
-        partyGSTIN: "33PQRCD9012I3J7",
-        items: [
-          { itemName: "SaaS Subscription", hsnCode: "9984", quantity: 12, price: 1000, discount: 10, taxRate: 18 },
-        ],
-        notes: "Annual plan",
-      },
-    },
-  ]
+  const [storedFiles, setStoredFiles] = useState<UploadedMeta[]>([])
 
   // Get user-specific storage key
   const getUserKey = (baseKey: string) => {
@@ -297,11 +249,14 @@ export default function InvoicesPage() {
     setIsVisible(true);
     fetchInvoices();
     loadClients();
-    // load uploads history with user-specific key
+    // load OCR-processed files history with user-specific key
     try {
       const userKey = getUserKey(UPLOADS_LS_KEY);
       const raw = localStorage.getItem(userKey);
-      if (raw) setUploadsQueue(JSON.parse(raw) as UploadedMeta[]);
+      if (raw) {
+        const parsed = JSON.parse(raw) as UploadedMeta[];
+        setStoredFiles(parsed.filter((entry) => !!entry.ocrResult));
+      }
     } catch (error) {
       console.error('Error loading uploads:', error);
     }
@@ -492,16 +447,200 @@ export default function InvoicesPage() {
     }
   }
 
-  // Persist uploads
-  const saveUploads = (list: UploadedMeta[]) => {
-    setUploadsQueue(list);
+  // Persist OCR processed files
+  const persistProcessedFiles = (list: UploadedMeta[]) => {
     try {
-      const userKey = getUserKey(UPLOADS_LS_KEY);
-      localStorage.setItem(userKey, JSON.stringify(list));
+      const userKey = getUserKey(UPLOADS_LS_KEY)
+      const sanitized = list
+        .filter((entry) => !!entry.ocrResult)
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          type: entry.type,
+          size: entry.size,
+          url: '',
+          createdAt: entry.createdAt,
+          ocrResult: entry.ocrResult,
+          ocrError: entry.ocrError,
+        }))
+      localStorage.setItem(userKey, JSON.stringify(sanitized))
     } catch (error) {
-      console.error('Error saving uploads:', error);
+      console.error('Error saving uploads:', error)
     }
-  };
+  }
+
+  const saveUploads = (list: UploadedMeta[]) => {
+    setUploadsQueue(list)
+    const processed = list.filter((entry) => !!entry.ocrResult)
+    if (processed.length) {
+      const merged = [...processed, ...storedFiles].filter(
+        (entry, index, array) => array.findIndex((item) => item.id === entry.id) === index,
+      )
+      setStoredFiles(merged)
+      persistProcessedFiles(merged)
+      return
+    }
+    persistProcessedFiles(storedFiles)
+  }
+
+  const applyOcrResultToInvoiceForm = (source: UploadedMeta, result: InvoiceOcrExtractResult) => {
+    const extracted = result.invoice
+    const nextNo = getNextInvoiceNumber()
+    const resolvedPartyName = result.clientResolution?.name || extracted.party || ''
+    const resolvedPartyGstin = result.clientResolution?.gstin || extracted.partyGstin || ''
+    const matchedClient = clients.find(
+      (client) =>
+        client.gstin.toUpperCase() === resolvedPartyGstin.toUpperCase() ||
+        client.name.toLowerCase() === resolvedPartyName.toLowerCase(),
+    )
+
+    if (result.clientResolution?.status === 'created') {
+      loadClients()
+    }
+
+    setUploadedFile({
+      name: source.name,
+      type: source.type,
+      size: source.size,
+      url: source.url,
+    })
+    setEditingInvoiceKey(null)
+    setSelectedInvoice(null)
+
+    setInvoiceForm((prev) => ({
+      ...prev,
+      invoiceNumber: nextNo,
+      invoiceDate: extracted.invoiceDate || prev.invoiceDate,
+      dueDate: extracted.dueDate || extracted.invoiceDate || prev.dueDate,
+      invoiceType: extracted.invoiceType || prev.invoiceType || 'sale',
+      party: matchedClient?.name || resolvedPartyName || prev.party,
+      partyGSTIN: matchedClient?.gstin || resolvedPartyGstin || prev.partyGSTIN,
+      recipientLegalName:
+        matchedClient?.legalName || matchedClient?.name || extracted.recipientLegalName || resolvedPartyName || prev.recipientLegalName,
+      recipientAddress:
+        matchedClient?.address ||
+        matchedClient?.billingAddress ||
+        extracted.recipientAddress ||
+        prev.recipientAddress,
+      recipientPlace: matchedClient?.place || prev.recipientPlace,
+      recipientStateCode: matchedClient?.stateCode || extracted.recipientStateCode || prev.recipientStateCode,
+      placeOfSupplyStateCode:
+        matchedClient?.stateCode || extracted.placeOfSupplyStateCode || extracted.recipientStateCode || prev.placeOfSupplyStateCode,
+      recipientPincode: matchedClient?.pincode || extracted.recipientPincode || prev.recipientPincode,
+      shippingToGSTIN: matchedClient?.shippingGstin || matchedClient?.gstin || prev.shippingToGSTIN,
+      shippingToState: matchedClient?.shippingState || prev.shippingToState,
+      shippingToStateCode: matchedClient?.shippingStateCode || matchedClient?.stateCode || prev.shippingToStateCode,
+      shippingToPincode: matchedClient?.shippingPincode || matchedClient?.pincode || prev.shippingToPincode,
+      eWayBill: extracted.ewayBillNumber || prev.eWayBill,
+      notes: extracted.notes || prev.notes || 'Auto-filled from OCR document.',
+      status: extracted.status || prev.status,
+    }))
+
+    const mappedItems = (extracted.items || []).map((item, index) => ({
+      id: index + 1,
+      itemName: item.itemName || `Item ${index + 1}`,
+      hsnCode: item.hsnCode || '',
+      quantity: Number(item.quantity || 1),
+      price: Number(item.price || 0),
+      discount: Number(item.discount || 0),
+      taxRate: Number(item.taxRate || 18),
+      amount: Number(item.amount || 0),
+    }))
+
+    setInvoiceItems(
+      mappedItems.length
+        ? mappedItems
+        : [
+            {
+              id: 1,
+              itemName: 'OCR Extracted Item',
+              hsnCode: '',
+              quantity: 1,
+              price: Number(extracted.amount || 0),
+              discount: 0,
+              taxRate: 18,
+              amount: Number(extracted.totalAmount || extracted.amount || 0),
+            },
+          ],
+    )
+
+    setIsUploadOpen(false)
+    setIsStoredOpen(false)
+    setIsDialogOpen(true)
+  }
+
+  const runOcrForUpload = async (upload: UploadedMeta): Promise<InvoiceOcrExtractResult | null> => {
+    if (!user?.sub) {
+      toast({
+        title: 'Error',
+        description: 'User not authenticated',
+        variant: 'destructive',
+      })
+      return null
+    }
+
+    try {
+      setIsOcrProcessing(true)
+
+      let sourceFile = upload.file
+      if (!sourceFile && upload.url) {
+        const response = await fetch(upload.url)
+        const blob = await response.blob()
+        sourceFile = new File([blob], upload.name, { type: upload.type })
+      }
+
+      if (!sourceFile) {
+        throw new Error('Original file not found. Please re-upload the document.')
+      }
+
+      const result = await invoicesApi.extractFromDocument(user.sub, sourceFile, true)
+
+      const updatedQueue = uploadsQueue.map((entry) =>
+        entry.id === upload.id ? { ...entry, ocrResult: result, ocrError: undefined } : entry,
+      )
+      saveUploads(updatedQueue)
+
+      const processedEntry: UploadedMeta = {
+        ...upload,
+        ocrResult: result,
+      }
+      const mergedStored = [processedEntry, ...storedFiles].filter(
+        (entry, index, array) => array.findIndex((item) => item.id === entry.id) === index,
+      )
+      setStoredFiles(mergedStored)
+      persistProcessedFiles(mergedStored)
+
+      const clientNote =
+        result.clientResolution?.status === 'created'
+          ? ` Client created: ${result.clientResolution.name || result.invoice.party}.`
+          : result.clientResolution?.status === 'matched'
+            ? ` Client matched: ${result.clientResolution.name || result.invoice.party}.`
+            : ''
+
+      toast({
+        title: 'OCR complete',
+        description: `Extracted invoice data using ${result.ocrEngine} (${Math.round(result.confidence * 100)}% confidence).${clientNote}`,
+      })
+
+      return result
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'OCR extraction failed.'
+      const updatedQueue = uploadsQueue.map((entry) =>
+        entry.id === upload.id ? { ...entry, ocrError: message } : entry,
+      )
+      saveUploads(updatedQueue)
+
+      toast({
+        title: 'OCR failed',
+        description: message,
+        variant: 'destructive',
+      })
+
+      return null
+    } finally {
+      setIsOcrProcessing(false)
+    }
+  }
 
   // Handle device file selection (browse)
   const handleDeviceFiles = (files: FileList | null) => {
@@ -521,6 +660,7 @@ export default function InvoicesPage() {
       size: f.size,
       url: URL.createObjectURL(f),
       createdAt: new Date().toISOString(),
+      file: f,
     }))
     saveUploads([...mapped, ...uploadsQueue])
   }
@@ -537,31 +677,18 @@ export default function InvoicesPage() {
   }
 
   // Prefill from an uploaded file, open Create dialog
-  const useUploaded = (u: UploadedMeta) => {
-    setUploadedFile({ name: u.name, type: u.type, size: u.size, url: u.url })
-    // Try to guess party from filename using actual clients data
-    const lower = u.name.toLowerCase()
-    const guessedParty = clients.find(client => 
-      lower.includes(client.name.split(" ")[0].toLowerCase())
-    )?.name || ""
-    const nextNo = getNextInvoiceNumber()
-    const selectedClient = clients.find(client => client.name === guessedParty)
-    setInvoiceForm(prev => ({
-      ...prev,
-      invoiceNumber: nextNo,
-      invoiceDate: new Date().toISOString().slice(0, 10),
-      party: guessedParty,
-      partyGSTIN: guessedParty ? getPartyGSTIN(guessedParty) : "",
-      invoiceType: selectedClient?.clientType?.toLowerCase().includes('supplier') ? "purchase" : (prev.invoiceType || "sale"),
-      notes: prev.notes || "Imported from upload",
-    }))
-    setInvoiceItems(prev =>
-      prev.length
-        ? prev
-        : [{ id: 1, itemName: "Uploaded Item", hsnCode: "", quantity: 1, price: 0, discount: 0, taxRate: 18, amount: 0 }]
-    )
-    setIsUploadOpen(false)
-    setIsDialogOpen(true)
+  const useUploaded = async (u: UploadedMeta) => {
+    if (u.ocrResult) {
+      applyOcrResultToInvoiceForm(u, u.ocrResult)
+      return
+    }
+
+    const result = await runOcrForUpload(u)
+    if (!result) {
+      return
+    }
+
+    applyOcrResultToInvoiceForm(u, result)
   }
 
   // Drag & Drop handlers
@@ -596,6 +723,7 @@ export default function InvoicesPage() {
 
   const handleEdit = (invoice: Invoice) => {
     setSelectedInvoice(invoice)
+    setEditingInvoiceKey((invoice.invoiceNumber || invoice.id.toString()))
     // Populate form with invoice data for editing
     setInvoiceForm({
       invoiceNumber: invoice.id.toString(),
@@ -645,7 +773,7 @@ export default function InvoicesPage() {
       taxRate: 18,
       amount: 0
     }])
-    setIsEditDialogOpen(true)
+    setIsDialogOpen(true)
   }
 
   const handleSend = (invoice: Invoice) => {
@@ -1014,7 +1142,16 @@ export default function InvoicesPage() {
   }
 
   const updateInvoice = async () => {
-    if (!selectedInvoice) return
+    if (!selectedInvoice || !editingInvoiceKey) return
+    if (!user?.sub) {
+      toast({
+        title: "Error",
+        description: "User not authenticated",
+        variant: "destructive",
+      })
+      return
+    }
+    const userId = user.sub
     
     try {
       setUpdating(true)
@@ -1033,7 +1170,8 @@ export default function InvoicesPage() {
       
       // Prepare data for backend API
       const updateData = {
-        userId: user.sub,
+        userId,
+        invoiceNumber: invoiceForm.invoiceNumber,
         invoiceDate: invoiceForm.invoiceDate,
         dueDate: invoiceForm.dueDate || invoiceForm.invoiceDate,
         documentTypeCode: invoiceForm.documentTypeCode,
@@ -1081,9 +1219,6 @@ export default function InvoicesPage() {
       }
 
       // Validate required fields
-      if (!user?.sub) {
-        throw new Error('User not authenticated')
-      }
       if (!invoiceForm.party || !invoiceForm.partyGSTIN) {
         throw new Error('Party name and GSTIN are required')
       }
@@ -1093,8 +1228,8 @@ export default function InvoicesPage() {
 
       // Update via API using invoice number
       const response = await invoicesApi.updateByInvoiceNumber(
-        user.sub,
-        selectedInvoice.invoiceNumber || selectedInvoice.id.toString(),
+        userId,
+        editingInvoiceKey,
         updateData
       )
       
@@ -1130,12 +1265,14 @@ export default function InvoicesPage() {
 
       // Update local state
       setInvoices(prev => prev.map(inv => 
-        (inv.invoiceNumber || inv.id) === (selectedInvoice.invoiceNumber || selectedInvoice.id) 
+        (inv.invoiceNumber || inv.id) === editingInvoiceKey
           ? updatedInvoice 
           : inv
       ))
       
       setIsEditDialogOpen(false)
+      setIsDialogOpen(false)
+      setEditingInvoiceKey(null)
       setSelectedInvoice(null)
       
       // Show appropriate success message
@@ -1440,6 +1577,8 @@ export default function InvoicesPage() {
       }])
       
       setIsDialogOpen(false)
+      setEditingInvoiceKey(null)
+      setSelectedInvoice(null)
       clearUploadedFile() // clear attachment after creating invoice
       
       // Show appropriate success message
@@ -1639,9 +1778,25 @@ export default function InvoicesPage() {
 
                   {/* Create Invoice + Stored Files stacked */}
                   <div className="flex flex-col items-stretch">
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog
+                      open={isDialogOpen}
+                      onOpenChange={(open) => {
+                        setIsDialogOpen(open)
+                        if (!open) {
+                          setEditingInvoiceKey(null)
+                          setSelectedInvoice(null)
+                        }
+                      }}
+                    >
                       <DialogTrigger asChild>
-                        <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-4 rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
+                        <Button
+                          size="lg"
+                          className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-4 rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+                          onClick={() => {
+                            setEditingInvoiceKey(null)
+                            setSelectedInvoice(null)
+                          }}
+                        >
                           <Plus className="w-5 h-5 mr-2" />
                           Create Invoice
                         </Button>
@@ -1652,10 +1807,12 @@ export default function InvoicesPage() {
                             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mr-3">
                               <FileText className="w-5 h-5 text-white" />
                             </div>
-                            Create New Invoice
+                            {editingInvoiceKey ? `Edit Invoice: ${editingInvoiceKey}` : 'Create New Invoice'}
                           </DialogTitle>
                           <DialogDescription className="text-gray-600 text-lg">
-                            Fill in the details to create a new invoice
+                            {editingInvoiceKey
+                              ? 'Update all invoice fields and save changes'
+                              : 'Fill in the details to create a new invoice'}
                           </DialogDescription>
                         </DialogHeader>
                         
@@ -2050,22 +2207,49 @@ export default function InvoicesPage() {
 
                           {/* Action Buttons */}
                           <div className="flex justify-end gap-4 pt-6 border-t border-gray-200">
-                              <Button 
-                                variant="outline" 
-                                onClick={() => createInvoice(true)}
-                                disabled={creating}
-                                className="px-8 py-3 rounded-xl border-gray-300 hover:bg-gray-50 text-gray-700 font-medium"
-                              >
-                                {creating ? "Saving..." : "Save as Draft"}
-                              </Button>
-                              <Button 
-                                onClick={() => createInvoice(false)}
-                                disabled={creating}
-                                className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
-                              >
-                                <FileText className="w-4 h-4 mr-2" />
-                                {creating ? "Creating..." : "Create Invoice"}
-                              </Button>
+                            {editingInvoiceKey ? (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setIsDialogOpen(false)
+                                    setEditingInvoiceKey(null)
+                                    setSelectedInvoice(null)
+                                  }}
+                                  disabled={updating}
+                                  className="px-8 py-3 rounded-xl border-gray-300 hover:bg-gray-50 text-gray-700 font-medium"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  onClick={updateInvoice}
+                                  disabled={updating}
+                                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+                                >
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  {updating ? 'Updating...' : 'Update Invoice'}
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button 
+                                  variant="outline" 
+                                  onClick={() => createInvoice(true)}
+                                  disabled={creating}
+                                  className="px-8 py-3 rounded-xl border-gray-300 hover:bg-gray-50 text-gray-700 font-medium"
+                                >
+                                  {creating ? "Saving..." : "Save as Draft"}
+                                </Button>
+                                <Button 
+                                  onClick={() => createInvoice(false)}
+                                  disabled={creating}
+                                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+                                >
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  {creating ? "Creating..." : "Create Invoice"}
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </DialogContent>
@@ -2296,89 +2480,42 @@ export default function InvoicesPage() {
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-gray-900">Stored Files</DialogTitle>
             <DialogDescription className="text-gray-600">
-              Select from previously processed invoice files
+              Reuse OCR-processed documents to auto-fill invoice fields
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
-            {storedFiles.map((file) => (
-              <div key={file.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 hover:bg-gray-50/50">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{file.name}</p>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                      <span>Party: {file.data.party}</span>
-                      <span>Date: {file.data.date}</span>
-                      <span>Type: {file.data.invoiceType}</span>
-                      <span>Items: {file.data.items.length}</span>
+            {storedFiles.length === 0 ? (
+              <div className="text-sm text-gray-500 text-center py-8">No OCR-processed files yet. Upload a file and run OCR first.</div>
+            ) : (
+              storedFiles.map((file) => (
+                <div key={file.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 hover:bg-gray-50/50">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{file.name}</p>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                        <span>Party: {file.ocrResult?.invoice.party || '-'}</span>
+                        <span>Date: {file.ocrResult?.invoice.invoiceDate || '-'}</span>
+                        <span>Type: {file.ocrResult?.invoice.invoiceType || '-'}</span>
+                        <span>Items: {file.ocrResult?.invoice.items?.length || 0}</span>
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    disabled={!file.ocrResult}
+                    onClick={() => {
+                      if (!file.ocrResult) return
+                      applyOcrResultToInvoiceForm(file, file.ocrResult)
+                    }}
+                  >
+                    Use This File
+                  </Button>
                 </div>
-                <Button
-                  onClick={() => {
-                    // Prefill form with stored file data
-                    const nextNo = getNextInvoiceNumber()
-                    // Check if party exists in clients, otherwise use stored data as-is
-                    const existingClient = clients.find(client => client.name === file.data.party)
-                    setInvoiceForm({
-                      invoiceNumber: nextNo,
-                      invoiceDate: new Date().toISOString().slice(0, 10),
-                      dueDate: '',
-                      documentTypeCode: invoiceForm.documentTypeCode,
-                      documentDate: new Date().toISOString().slice(0, 10),
-                      precedingInvoiceReference: '',
-                      precedingInvoiceDate: '',
-                      invoiceType: file.data.invoiceType,
-                      supplyTypeCode: invoiceForm.supplyTypeCode,
-                      isService: invoiceForm.isService,
-                      supplierLegalName: invoiceForm.supplierLegalName,
-                      supplierAddress: invoiceForm.supplierAddress,
-                      supplierPlace: invoiceForm.supplierPlace,
-                      supplierStateCode: invoiceForm.supplierStateCode,
-                      supplierPincode: invoiceForm.supplierPincode,
-                      party: file.data.party,
-                      partyGSTIN: existingClient?.gstin || file.data.partyGSTIN,
-                      recipientLegalName: existingClient?.legalName || existingClient?.name || file.data.party,
-                      recipientAddress: existingClient?.address || existingClient?.billingAddress || '',
-                      recipientStateCode: existingClient?.stateCode || '',
-                      placeOfSupplyStateCode: existingClient?.stateCode || '',
-                      recipientPincode: existingClient?.pincode || '',
-                      recipientPlace: existingClient?.place || '',
-                      irn: '',
-                      shippingToGSTIN: existingClient?.shippingGstin || existingClient?.gstin || '',
-                      shippingToState: existingClient?.shippingState || '',
-                      shippingToStateCode: existingClient?.shippingStateCode || existingClient?.stateCode || '',
-                      shippingToPincode: existingClient?.shippingPincode || existingClient?.pincode || '',
-                      dispatchFromName: invoiceForm.dispatchFromName,
-                      dispatchFromAddress: invoiceForm.dispatchFromAddress,
-                      dispatchFromPlace: invoiceForm.dispatchFromPlace,
-                      dispatchFromPincode: invoiceForm.dispatchFromPincode,
-                      eWayBill: file.data.eWayBill || '',
-                      transportMode: file.data.transportMode || '',
-                      notes: file.data.notes || 'Imported from stored files',
-                      status: 'Pending'
-                    })
-                    setInvoiceItems(file.data.items.map((item, idx) => ({
-                      id: idx + 1,
-                      itemName: item.itemName,
-                      hsnCode: item.hsnCode,
-                      quantity: item.quantity,
-                      price: item.price,
-                      discount: item.discount,
-                      taxRate: item.taxRate,
-                      amount: item.price * item.quantity * (1 + item.taxRate / 100) * (1 - item.discount / 100)
-                    })))
-                    setIsStoredOpen(false)
-                    setIsDialogOpen(true)
-                  }}
-                >
-                  Use This File
-                </Button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           <DialogFooter>
@@ -2433,10 +2570,22 @@ export default function InvoicesPage() {
                       <p className="text-xs text-gray-500">
                         {(u.size / 1024).toFixed(1)} KB • {new Date(u.createdAt).toLocaleString()}
                       </p>
+                      {u.ocrResult && (
+                        <p className="text-xs text-emerald-600">
+                          OCR ready ({u.ocrResult.ocrEngine}, {Math.round(u.ocrResult.confidence * 100)}%)
+                        </p>
+                      )}
+                      {u.ocrError && <p className="text-xs text-red-600">{u.ocrError}</p>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={() => useUploaded(u)}>Use</Button>
+                    {!u.ocrResult ? (
+                      <Button size="sm" disabled={isOcrProcessing} onClick={() => useUploaded(u)}>
+                        {isOcrProcessing ? 'Processing...' : 'Extract OCR'}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={() => useUploaded(u)}>Use</Button>
+                    )}
                     <Button size="sm" variant="ghost" className="text-red-600" onClick={() => removeUploaded(u.id)}>
                       Remove
                     </Button>

@@ -5,3 +5,4 @@ export * from './business-management.dto';
 export * from './filing-management.dto';
 export * from './document-management.dto';
 export * from './notification-management.dto';
+export * from './subscription-management.dto';

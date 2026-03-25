@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MessageSquare, Send, X, Bot, User } from "lucide-react"
@@ -15,6 +14,13 @@ interface Message {
   timestamp: Date
 }
 
+type ChatApiMessage = {
+  role: "user" | "assistant"
+  content: string
+}
+
+type AssistantProvider = "gemini" | "realtime" | "fallback" | "unknown"
+
 export function AIAssistant() {
   const router = useRouter()
   const pathname = usePathname()
@@ -24,11 +30,35 @@ export function AIAssistant() {
     {
       id: "1",
       type: "bot",
-      content: "Hello! I'm your GST assistant. How can I help you today?",
+      content: "Hello! I'm your Smart Assistant. I can help with GST and general questions. How can I help you today?",
       timestamp: new Date(),
     },
   ])
   const [inputValue, setInputValue] = useState("")
+  const [isSending, setIsSending] = useState(false)
+  const [assistantProvider, setAssistantProvider] = useState<AssistantProvider>("fallback")
+  const [assistantModel, setAssistantModel] = useState("rules")
+  const [assistantStatusNote, setAssistantStatusNote] = useState("")
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
+
+  const getProviderLabel = (provider: AssistantProvider): string => {
+    if (provider === "gemini") return "Gemini"
+    if (provider === "realtime") return "Realtime"
+    if (provider === "fallback") return "Fallback"
+    return "Unknown"
+  }
+
+  const toStatusNote = (value: string): string => {
+    const text = value.trim()
+    if (!text) return ""
+    return text.length > 90 ? `${text.slice(0, 87)}...` : text
+  }
+
+  const toChatApiMessages = (history: Message[]): ChatApiMessage[] =>
+    history.map((message) => ({
+      role: message.type === "user" ? "user" : "assistant",
+      content: message.content,
+    }))
 
   useEffect(() => {
     if (searchParams.get('assistant') !== 'open') {
@@ -43,51 +73,88 @@ export function AIAssistant() {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname)
   }, [pathname, router, searchParams])
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return
+  useEffect(() => {
+    if (!isOpen) return
+
+    bottomAnchorRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    })
+  }, [messages, isSending, isOpen])
+
+  const handleSendMessage = async () => {
+    const trimmedInput = inputValue.trim()
+    if (!trimmedInput || isSending) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
       type: "user",
-      content: inputValue,
+      content: trimmedInput,
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const updatedHistory = [...messages, userMessage]
+    setMessages(updatedHistory)
     setInputValue("")
+    setIsSending(true)
 
-    // Simulate bot response
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/gst-assistant", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: toChatApiMessages(updatedHistory),
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || "Failed to get AI response")
+      }
+
+      const payload = await response.json()
+      const replyText = typeof payload?.reply === "string" && payload.reply.trim().length
+        ? payload.reply.trim()
+        : "I could not generate an answer. Please try again."
+      const provider: AssistantProvider = payload?.provider || "unknown"
+      setAssistantProvider(provider)
+      setAssistantModel(typeof payload?.model === "string" ? payload.model : "unknown")
+
+      const providerErrors = Array.isArray(payload?.meta?.providerErrors)
+        ? payload.meta.providerErrors.filter((item: unknown) => typeof item === "string")
+        : []
+      if (provider === "fallback" && providerErrors.length > 0) {
+        setAssistantStatusNote(toStatusNote(providerErrors[0]))
+      } else {
+        setAssistantStatusNote("")
+      }
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
-        content: getBotResponse(inputValue),
+        content: replyText,
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, botMessage])
-    }, 1000)
-  }
+    } catch (error) {
+      setAssistantProvider("fallback")
+      setAssistantModel("rules")
+      setAssistantStatusNote(toStatusNote("Request failed"))
 
-  const getBotResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase()
-
-    if (input.includes("gst") && input.includes("rate")) {
-      return "GST rates in India are: 0%, 5%, 12%, 18%, and 28%. The rate depends on the type of goods or services. Would you like me to help you find the rate for a specific item?"
+      const fallbackMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "bot",
+        content:
+          "I am unable to answer right now. Please try again in a moment. You can ask GST or general questions, and I will try again.",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, fallbackMessage])
+      console.error("Assistant error:", error)
+    } finally {
+      setIsSending(false)
     }
-
-    if (input.includes("invoice")) {
-      return "I can help you with invoice-related queries! You can create invoices, upload them for OCR processing, or track their status. What specific help do you need with invoices?"
-    }
-
-    if (input.includes("filing") || input.includes("return")) {
-      return "For GST filing, you need to file GSTR-1 (by 11th), GSTR-3B (by 20th), and annual returns. I can guide you through the process. Which return do you need help with?"
-    }
-
-    if (input.includes("due date") || input.includes("deadline")) {
-      return "GST filing due dates: GSTR-1 - 11th of next month, GSTR-3B - 20th of next month, GSTR-9 (Annual) - 31st December. Need help with any specific return?"
-    }
-
-    return "I understand you're asking about GST compliance. I can help with GST rates, invoice management, filing returns, due dates, and general compliance questions. Could you please be more specific about what you need help with?"
   }
 
   if (!isOpen) {
@@ -103,7 +170,7 @@ export function AIAssistant() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 w-80 h-[430px] shadow-xl z-50 flex flex-col rounded-2xl bg-white border border-gray-200">
+    <div className="fixed bottom-6 right-6 w-[360px] h-[460px] min-w-[300px] min-h-[340px] max-w-[92vw] max-h-[85vh] resize overflow-hidden shadow-xl z-50 flex flex-col rounded-2xl bg-white border border-gray-200">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl bg-white">
         <div className="flex items-center gap-3">
@@ -111,8 +178,12 @@ export function AIAssistant() {
             <MessageSquare className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="font-semibold text-base text-gray-900 leading-tight">GST Assistant</div>
-            <div className="text-xs text-green-600 font-medium flex items-center gap-1">● Online</div>
+            <div className="font-semibold text-base text-gray-900 leading-tight">Smart Assistant</div>
+            <div className="text-xs text-green-600 font-medium flex items-center gap-1">● Online ({getProviderLabel(assistantProvider)})</div>
+            <div className="text-[11px] text-gray-500 leading-tight">
+              Engine: {assistantModel}
+              {assistantStatusNote ? ` | ${assistantStatusNote}` : ""}
+            </div>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="h-7 w-7">
@@ -133,7 +204,7 @@ export function AIAssistant() {
                     <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                       <Bot className="w-4 h-4 text-blue-600" />
                     </div>
-                    <div className="bg-gray-100 text-gray-900 rounded-xl px-4 py-2 text-sm leading-relaxed shadow-sm break-words" style={{minWidth:'40px'}}>
+                    <div className="bg-gray-100 text-gray-900 rounded-xl px-4 py-2 text-xs leading-relaxed shadow-sm break-words" style={{minWidth:'40px'}}>
                       {message.content}
                     </div>
                   </div>
@@ -142,30 +213,38 @@ export function AIAssistant() {
                     <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
                       <User className="w-4 h-4 text-white" />
                     </div>
-                    <div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-sm leading-relaxed shadow-sm break-words" style={{minWidth:'40px'}}>
+                    <div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-xs leading-relaxed shadow-sm break-words" style={{minWidth:'40px'}}>
                       {message.content}
                     </div>
                   </div>
                 )}
               </div>
             ))}
+            <div ref={bottomAnchorRef} />
           </div>
         </ScrollArea>
         {/* Input Area */}
         <div className="px-3 pb-3 pt-2 bg-white border-t border-gray-100">
           <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-2 py-1 border border-gray-200">
             <Input
-              placeholder="Ask about GST..."
+              placeholder="Ask anything..."
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-              className="flex-1 border-none bg-transparent focus:ring-0 focus:outline-none text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+              className="flex-1 border-none bg-transparent focus:ring-0 focus:outline-none text-xs"
+              disabled={isSending}
             />
             {/* Optionally add a mic icon here for voice input */}
-            <Button onClick={handleSendMessage} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-xl">
+            <Button onClick={handleSendMessage} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-xl" disabled={isSending}>
               <Send className="w-4 h-4" />
             </Button>
           </div>
+          {isSending && <p className="text-xs text-gray-500 mt-2">Smart Assistant is typing...</p>}
         </div>
       </div>
     </div>

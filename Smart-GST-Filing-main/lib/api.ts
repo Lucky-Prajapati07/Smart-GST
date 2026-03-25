@@ -96,6 +96,51 @@ export interface InvoiceLineItem {
   amount: number;
 }
 
+export interface InvoiceOcrLineItem {
+  itemName: string;
+  hsnCode: string;
+  quantity: number;
+  price: number;
+  discount: number;
+  taxRate: number;
+  amount: number;
+}
+
+export interface InvoiceOcrExtractResult {
+  documentId: number;
+  fileName: string;
+  mimeType: string;
+  ocrEngine: string;
+  confidence: number;
+  extractedTextPreview: string;
+  invoice: {
+    invoiceNumber: string;
+    invoiceDate: string;
+    dueDate: string;
+    invoiceType: string;
+    party: string;
+    partyGstin: string;
+    recipientLegalName?: string;
+    recipientAddress?: string;
+    recipientStateCode?: string;
+    placeOfSupplyStateCode?: string;
+    recipientPincode?: string;
+    ewayBillNumber?: string;
+    notes?: string;
+    amount: string;
+    gst: string;
+    totalAmount: string;
+    status: string;
+    items: InvoiceOcrLineItem[];
+  };
+  clientResolution?: {
+    status: 'matched' | 'created' | 'none';
+    clientId?: number;
+    name?: string;
+    gstin?: string;
+  };
+}
+
 // Client API functions
 export const clientsApi = {
   // Get all clients
@@ -371,6 +416,27 @@ export interface InvoiceResponse {
 
 // Invoice API functions
 export const invoicesApi = {
+  // OCR extract invoice data from uploaded document
+  extractFromDocument: async (
+    userId: string,
+    file: File,
+    createClientIfMissing = true,
+  ): Promise<InvoiceOcrExtractResult> => {
+    const formData = new FormData();
+    formData.append('userId', userId);
+    formData.append('file', file);
+    formData.append('createClientIfMissing', String(createClientIfMissing));
+
+    const response = await apiClient.post('/invoices/ocr/extract', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000,
+    });
+
+    return response.data;
+  },
+
   // Get all invoices
   getAll: async (userId: string, params?: {
     invoiceType?: string;
@@ -659,12 +725,48 @@ export interface Reminder {
   description?: string;
   scheduledFor: string;
   recipientEmail: string;
-  status?: 'Pending' | 'Sent' | 'Cancelled' | 'Failed';
+  status?: 'Pending' | 'Completed' | 'Sent' | 'Cancelled' | 'Failed';
   sentAt?: string | null;
   lastError?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
+
+export type UserAccessType = 'trial' | 'subscription' | 'expired';
+
+export interface UserSubscriptionStatus {
+  plan: string;
+  isTrialActive: boolean;
+  activeSubscription: {
+    id: number;
+    userId: string;
+    planType: string;
+    price: string;
+    currency: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    autoRenew: boolean;
+    paymentId: string | null;
+    notes: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  trialEndDate: string | null;
+  subscriptionEndDate: string | null;
+  trialDaysRemaining: number;
+  subscriptionDaysRemaining: number;
+  currentAccessType: UserAccessType;
+  currentPlanLabel: string;
+  accessEndsAt: string | null;
+}
+
+export const subscriptionApi = {
+  getUserStatus: async (userId: string): Promise<UserSubscriptionStatus> => {
+    const response = await apiClient.get(`/subscription/user-status?userId=${encodeURIComponent(userId)}`);
+    return response.data;
+  },
+};
 
 export const remindersApi = {
   create: async (reminderData: Omit<Reminder, 'id' | 'status' | 'sentAt' | 'lastError' | 'createdAt' | 'updatedAt'>) => {

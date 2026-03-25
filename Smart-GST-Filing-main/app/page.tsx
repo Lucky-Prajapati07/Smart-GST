@@ -49,9 +49,9 @@ import { useLanguage } from "@/contexts/language-context"
 export default function HomePage() {
   const { t } = useLanguage()
   const [isVisible, setIsVisible] = useState(false)
-  const [currentTestimonial, setCurrentTestimonial] = useState(0)
   const [typedText, setTypedText] = useState("")
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const heroTitle = "GST Filing"
 
   // Enhanced features array with detailed descriptions
   const features = [
@@ -125,60 +125,29 @@ export default function HomePage() {
 
   const stats = [
     { 
-      number: t('stats.returns'), 
-      label: "Returns Filed", 
+      title: "Guided Workflows", 
       icon: FileText, 
-      description: "Successfully filed GST returns",
+      description: "Step-by-step filing flow designed for regular GST tasks.",
       color: "from-blue-500 to-purple-600"
     },
     { 
-      number: t('stats.customers'), 
-      label: "Happy Customers", 
+      title: "Business Friendly", 
       icon: Users, 
-      description: "Businesses trust our platform",
+      description: "Useful for individuals, small teams, and growing organizations.",
       color: "from-green-500 to-emerald-600"
     },
     { 
-      number: t('stats.accuracy'), 
-      label: "Accuracy Rate", 
+      title: "Validation Support", 
       icon: Award, 
-      description: "Error-free filing guarantee",
+      description: "Built-in checks help reduce mistakes before submission.",
       color: "from-yellow-500 to-orange-600"
     },
     { 
-      number: t('stats.savings'), 
-      label: "Avg. Savings", 
+      title: "Clear Tracking", 
       icon: TrendingUp, 
-      description: "Per business annually",
+      description: "Track filing status, records, and updates in one place.",
       color: "from-red-500 to-pink-600"
     },
-  ]
-
-  const testimonials = [
-    {
-      name: t('testimonials.name1'),
-      business: t('testimonials.business1'),
-      comment: t('testimonials.comment1'),
-      rating: 5,
-      image: "RK",
-      location: "Mumbai, Maharashtra"
-    },
-    {
-      name: t('testimonials.name2'),
-      business: t('testimonials.business2'),
-      comment: t('testimonials.comment2'),
-      rating: 5,
-      image: "PS",
-      location: "Delhi, India"
-    },
-    {
-      name: t('testimonials.name3'),
-      business: t('testimonials.business3'),
-      comment: t('testimonials.comment3'),
-      rating: 5,
-      image: "AP",
-      location: "Bangalore, Karnataka"
-    }
   ]
 
   const supportedReturns = [
@@ -228,98 +197,90 @@ export default function HomePage() {
 
   const pricingPlans = [
     {
-      name: "Starter",
+      name: "Monthly",
       price: "₹999",
       period: "/month",
-      description: "Perfect for small businesses",
+      description: "Flexible monthly billing for regular GST operations",
       features: [
-        "Up to 100 invoices",
-        "GSTR-1 & GSTR-3B filing",
+        "Core GST filing workflows",
+        "Invoice and record management",
         "Email support",
-        "Basic reports",
+        "Basic reporting",
         "Data backup",
-        "Mobile app access"
+        "Dashboard access"
       ],
-      color: "from-blue-500 to-blue-600",
-      savings: "Save ₹5,000/year"
+      color: "from-blue-500 to-blue-600"
     },
     {
-      name: "Professional",
-      price: "₹2,999",
-      period: "/month",
-      description: "Ideal for growing businesses",
+      name: "Half Yearly",
+      price: "₹5,499",
+      period: "/6 months",
+      description: "Balanced option for medium-term compliance planning",
       features: [
-        "Unlimited invoices",
-        "All GST returns",
+        "Standard GST return support",
+        "Extended invoice handling",
         "Priority support",
-        "Advanced analytics",
+        "Business analytics",
         "API access",
         "Multi-user support",
         "Custom integrations",
         "Audit trail"
       ],
       color: "from-purple-500 to-purple-600",
-      popular: true,
-      savings: "Save ₹15,000/year"
+      popular: true
     },
     {
-      name: "Enterprise",
+      name: "Yearly",
       price: "₹9,999",
-      period: "/month",
-      description: "For large organizations",
+      period: "/year",
+      description: "Long-term billing for full-year GST management",
       features: [
         "Multi-location support",
         "Dedicated account manager",
         "Custom integrations",
         "White-label solution",
-        "24/7 phone support",
+        "Priority phone support",
         "Advanced security",
         "Custom reports",
         "Training sessions"
       ],
-      color: "from-green-500 to-green-600",
-      savings: "Save ₹50,000/year"
+      color: "from-green-500 to-green-600"
     }
   ]
 
   const benefits = [
     {
       icon: Timer,
-      title: "Save 90% Time",
-      description: "Automated processing reduces filing time from hours to minutes",
+      title: "Save Time",
+      description: "Automation helps simplify routine filing and compliance steps.",
       details: ["Instant calculations", "Auto-populated forms", "One-click submissions"]
     },
     {
       icon: Shield,
-      title: "100% Compliant",
-      description: "Always up-to-date with latest GST regulations and requirements",
+      title: "Compliance Focused",
+      description: "Designed to align with current GST filing requirements.",
       details: ["Government approved", "Regular updates", "Audit ready"]
     },
     {
       icon: Award,
-      title: "99.9% Accuracy",
-      description: "AI-powered validation ensures error-free GST return filing",
+      title: "Accuracy Support",
+      description: "Validation checks guide users toward cleaner submissions.",
       details: ["Smart error detection", "Real-time validation", "Automated corrections"]
     },
     {
       icon: Users,
       title: "Expert Support",
-      description: "Dedicated GST specialists available whenever you need help",
-      details: ["24/7 chat support", "Phone consultation", "Email assistance"]
+      description: "Get help with onboarding, filing flow, and troubleshooting.",
+      details: ["Live chat support", "Phone consultation", "Email assistance"]
     }
   ]
 
   // Animation effects
   useEffect(() => {
     setIsVisible(true)
-    
-    // Testimonial rotation
-    const testimonialInterval = setInterval(() => {
-      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length)
-    }, 6000)
 
     // Typewriter effect for hero title
-    const titleText = t('hero.title')
+    const titleText = heroTitle
     let i = 0
     const typeInterval = setInterval(() => {
       if (i < titleText.length) {
@@ -338,14 +299,13 @@ export default function HomePage() {
     window.addEventListener('mousemove', handleMouseMove)
     
     return () => {
-      clearInterval(testimonialInterval)
       clearInterval(typeInterval)
       window.removeEventListener('mousemove', handleMouseMove)
     }
-  }, [t, testimonials.length])
+  }, [heroTitle])
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
+    <div id="top" className="min-h-screen bg-white overflow-x-hidden">
       <Navbar />
 
       {/* Enhanced Hero Section with More Visual Elements */}
@@ -408,7 +368,7 @@ export default function HomePage() {
                 <div className="absolute inset-0 bg-yellow-400 rounded-full animate-ping opacity-30"></div>
               </div>
               <span className="bg-gradient-to-r from-blue-800 via-purple-800 to-indigo-800 bg-clip-text text-transparent font-bold">
-                {t('hero.badge')}
+                Smart GST filing for modern businesses
               </span>
               <div className="flex space-x-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -425,12 +385,12 @@ export default function HomePage() {
               <span className="animate-pulse text-blue-600">|</span>
               <br />
               <span className="text-3xl md:text-5xl bg-gradient-to-r from-gray-800 via-gray-700 to-gray-600 bg-clip-text text-transparent">
-                {t('hero.subtitle')}
+                Simple, organized GST workflows
               </span>
             </h1>
             
             <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed">
-              {t('hero.description')}
+              Manage invoices, returns, reminders, and records from one dashboard with a clean, guided process.
             </p>
 
             {/* Enhanced CTA buttons */}
@@ -471,10 +431,10 @@ export default function HomePage() {
             {/* Enhanced trust indicators */}
             <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-700 mb-8">
               {[
-                { icon: CheckCircle, text: t('hero.trust.freeTrial'), color: 'text-green-500' },
-                { icon: Shield, text: t('hero.trust.security'), color: 'text-blue-500' },
-                { icon: Award, text: t('hero.trust.accuracy'), color: 'text-purple-500' },
-                { icon: Users, text: t('hero.trust.customers'), color: 'text-orange-500' }
+                { icon: CheckCircle, text: 'Clear setup flow', color: 'text-green-500' },
+                { icon: Shield, text: 'Secure data handling', color: 'text-blue-500' },
+                { icon: Award, text: 'Built-in validation', color: 'text-purple-500' },
+                { icon: Users, text: 'Team friendly access', color: 'text-orange-500' }
               ].map((item, index) => (
                 <div key={index} className="flex items-center gap-2 px-4 py-2 bg-white/80 rounded-full backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer border border-gray-100">
                   <item.icon className={`w-4 h-4 ${item.color} group-hover:scale-110 transition-transform`} />
@@ -483,7 +443,7 @@ export default function HomePage() {
               ))}
             </div>
 
-            {/* Enhanced stats counter */}
+            {/* Platform overview cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-5xl mx-auto">
               {stats.map((stat, index) => {
                 const IconComponent = stat.icon
@@ -498,10 +458,9 @@ export default function HomePage() {
                         <IconComponent className="w-6 h-6" />
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl md:text-3xl font-black text-gray-900 group-hover:text-blue-600 transition-colors mb-1">
-                          {stat.number}
+                        <div className="text-sm md:text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-1">
+                          {stat.title}
                         </div>
-                        <div className="text-xs text-gray-600 font-semibold mb-1">{stat.label}</div>
                         <div className="text-xs text-gray-500">{stat.description}</div>
                       </div>
                     </div>
@@ -518,10 +477,10 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">
-              Why Businesses Love Us
+              Why Use Smart GST
             </h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              Join thousands of successful businesses who have revolutionized their GST compliance
+              Practical capabilities built to support day-to-day GST filing and compliance work.
             </p>
           </div>
           
@@ -563,10 +522,10 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">
-              {t('features.title')}
+              Core Platform Features
             </h2>
             <p className="text-lg text-gray-600 max-w-4xl mx-auto leading-relaxed">
-              {t('features.subtitle')}
+              Built to support GST filing, review, and records with less manual effort.
             </p>
           </div>
           
@@ -659,59 +618,51 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Enhanced Testimonials Section */}
+      {/* Who It's For Section */}
       <section className="py-16 px-4 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">
-              {t('testimonials.title')}
+              Who This Platform Supports
             </h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              {t('testimonials.subtitle')}
+              A general-purpose GST workspace suitable for different business stages.
             </p>
           </div>
 
-          <div className="relative max-w-5xl mx-auto">
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-2xl overflow-hidden">
-              <CardContent className="p-8">
-                <div className="text-center">
-                  <div className="flex justify-center mb-6">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="w-6 h-6 text-yellow-400 fill-current" />
-                    ))}
-                  </div>
-                  
-                  <blockquote className="text-xl md:text-2xl font-medium text-gray-900 mb-8 leading-relaxed italic">
-                    "{testimonials[currentTestimonial].comment}"
-                  </blockquote>
-                  
-                  <div className="flex items-center justify-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                      {testimonials[currentTestimonial].image}
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {[
+              {
+                title: "Small Businesses",
+                description: "Use a guided setup to organize invoices and file routine returns.",
+                points: ["Simple onboarding", "Essential GST workflows", "Basic reporting"]
+              },
+              {
+                title: "Growing Teams",
+                description: "Coordinate filings with shared access and structured tracking.",
+                points: ["Role-based access", "Task visibility", "Centralized records"]
+              },
+              {
+                title: "Advisors & Accountants",
+                description: "Manage multiple clients and keep documentation organized.",
+                points: ["Client-wise views", "Return monitoring", "Audit-ready history"]
+              }
+            ].map((segment, index) => (
+              <Card key={index} className="bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
+                <CardHeader>
+                  <CardTitle className="text-xl font-bold text-gray-900 text-center">{segment.title}</CardTitle>
+                  <CardDescription className="text-center text-gray-600">{segment.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {segment.points.map((point, pointIndex) => (
+                    <div key={pointIndex} className="flex items-center space-x-2 text-sm text-gray-600">
+                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span>{point}</span>
                     </div>
-                    <div className="text-left">
-                      <div className="font-bold text-gray-900 text-lg mb-1">{testimonials[currentTestimonial].name}</div>
-                      <div className="text-gray-600 text-sm mb-1">{testimonials[currentTestimonial].business}</div>
-                      <div className="text-gray-500 text-xs">{testimonials[currentTestimonial].location}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="flex justify-center mt-6 gap-3">
-              {testimonials.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentTestimonial(index)}
-                  className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                    index === currentTestimonial 
-                      ? 'bg-blue-600 scale-125 shadow-lg' 
-                      : 'bg-gray-300 hover:bg-gray-400'
-                  }`}
-                />
-              ))}
-            </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
@@ -764,14 +715,14 @@ export default function HomePage() {
       </section>
 
       {/* Enhanced Pricing Section */}
-      <section className="py-16 px-4 bg-gray-50">
+      <section id="pricing" className="py-16 px-4 bg-gray-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">
               Simple, Transparent Pricing
             </h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              Choose the perfect plan for your business size and requirements
+              Choose a plan based on your business needs and team size.
             </p>
           </div>
           
@@ -844,7 +795,7 @@ export default function HomePage() {
       </section>
 
       {/* Enhanced Expert Support Section */}
-      <section className="py-16 px-4 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 text-white">
+      <section id="help" className="py-16 px-4 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 text-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black mb-4">
@@ -863,7 +814,7 @@ export default function HomePage() {
                 description: t('expertSupport.phone.description'),
                 contact: t('expertSupport.phone.contact'),
                 color: "from-green-400 to-emerald-500",
-                features: ["24/7 availability", "Dedicated GST experts", "Multilingual support"]
+                features: ["Business-hour availability", "Dedicated GST experts", "Multilingual support"]
               },
               {
                 icon: Mail,
@@ -927,7 +878,7 @@ export default function HomePage() {
             </h2>
             
             <p className="text-lg md:text-xl text-gray-600 max-w-4xl mx-auto mb-8 leading-relaxed">
-              {t('cta.subtitle')}
+              Start with a structured GST workflow and scale as your compliance needs grow.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -947,23 +898,23 @@ export default function HomePage() {
               </Button>
             </div>
 
-            {/* Enhanced guarantee badges */}
+            {/* Assurance badges */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
               {[
                 {
                   icon: Shield,
-                  title: "30-Day Money Back",
-                  description: "Not satisfied? Get full refund"
+                  title: "Clear Terms",
+                  description: "Transparent policy and billing information"
                 },
                 {
                   icon: ShieldCheck,
-                  title: "100% Secure",
-                  description: "Bank-grade security & encryption"
+                  title: "Secure Platform",
+                  description: "Modern security practices for account and data protection"
                 },
                 {
                   icon: Award,
                   title: "Expert Support",
-                  description: "Dedicated GST specialists"
+                  description: "Guidance from the support team when needed"
                 }
               ].map((guarantee, index) => (
                 <div key={index} className="flex flex-col items-center space-y-3 p-6 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-all duration-300 group cursor-pointer">

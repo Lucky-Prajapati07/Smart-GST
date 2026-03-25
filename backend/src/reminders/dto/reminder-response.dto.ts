@@ -1,4 +1,4 @@
-type ReminderStatus = 'Pending' | 'Sent' | 'Cancelled' | 'Failed';
+type ReminderStatus = 'Pending' | 'Completed' | 'Sent' | 'Cancelled' | 'Failed';
 
 type ReminderRecord = {
   id: number;

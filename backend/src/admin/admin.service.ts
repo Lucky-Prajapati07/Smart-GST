@@ -19,6 +19,9 @@ import {
   DocumentListQueryDto,
   UpdateDocumentStatusDto,
   AdminManagedDocumentStatus,
+  AdminSubscriptionListQueryDto,
+  UpdateAdminSubscriptionDto,
+  AdminSubscriptionStatus,
   CreateAdminNotificationDto,
   NotificationListQueryDto,
   UserNotificationsQueryDto,
@@ -93,6 +96,10 @@ export class AdminService {
 
     // If user exists in business/settings but not managed yet, default to Pending until admin approval.
     if (business || settings) {
+      const now = new Date();
+      const trialEnd = new Date(now);
+      trialEnd.setDate(trialEnd.getDate() + 30);
+
       return this.prisma.userManagement.create({
         data: {
           userId,
@@ -100,7 +107,10 @@ export class AdminService {
           email: settings?.email || business?.contactEmail || `${userId}@local.smartgst`,
           mobile: settings?.phone || business?.contactMobile || null,
           status: AdminManagedUserStatus.Pending as any,
-          plan: AdminManagedUserPlan.Pro,
+          plan: AdminManagedUserPlan.Basic,
+          trialStartDate: now,
+          trialEndDate: trialEnd,
+          isTrialActive: true,
           deactivatedAt: null,
         },
       });
@@ -139,6 +149,10 @@ export class AdminService {
       const mobile = settings?.phone || business.contactMobile || null;
 
       if (!existing) {
+        const now = new Date();
+        const trialEnd = new Date(now);
+        trialEnd.setDate(trialEnd.getDate() + 30);
+
         await this.prisma.userManagement.create({
           data: {
             userId: business.userId,
@@ -147,7 +161,10 @@ export class AdminService {
             mobile,
             // New signups are kept pending until admin explicitly approves/rejects from User Management.
             status: AdminManagedUserStatus.Pending as any,
-            plan: AdminManagedUserPlan.Pro,
+            plan: AdminManagedUserPlan.Basic,
+            trialStartDate: now,
+            trialEndDate: trialEnd,
+            isTrialActive: true,
             deactivatedAt: null,
           },
         });
@@ -1839,6 +1856,402 @@ export class AdminService {
     `;
 
     return tables.length > 0;
+  }
+
+  private getDaysRemaining(date?: Date | null): number | null {
+    if (!date) {
+      return null;
+    }
+
+    const now = new Date();
+    return Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  private mapAdminSubscription(subscription: any) {
+    const trialDaysRemaining = this.getDaysRemaining(subscription.userManagement?.trialEndDate || null);
+    const subscriptionDaysRemaining = this.getDaysRemaining(subscription.endDate || null);
+
+    const hasActiveSubscription =
+      subscription.status === AdminSubscriptionStatus.Active &&
+      (subscriptionDaysRemaining === null || subscriptionDaysRemaining >= 0);
+
+    const accessType = subscription.userManagement?.isTrialActive
+      ? 'trial'
+      : hasActiveSubscription
+        ? 'subscription'
+        : 'expired';
+
+    return {
+      id: subscription.id,
+      userId: subscription.userId,
+      userName: subscription.userManagement?.fullName || subscription.userId,
+      email: subscription.userManagement?.email || null,
+      mobile: subscription.userManagement?.mobile || null,
+      userPlan: subscription.userManagement?.plan || null,
+      planType: subscription.planType,
+      price: String(subscription.price),
+      currency: subscription.currency,
+      status: subscription.status,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+      daysToExpiry: subscriptionDaysRemaining,
+      autoRenew: subscription.autoRenew,
+      paymentId: subscription.paymentId,
+      notes: subscription.notes,
+      isTrialActive: Boolean(subscription.userManagement?.isTrialActive),
+      trialStartDate: subscription.userManagement?.trialStartDate || null,
+      trialEndDate: subscription.userManagement?.trialEndDate || null,
+      trialDaysRemaining,
+      accessType,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt,
+      sourceType: 'subscription',
+    };
+  }
+
+  private mapTrialOnlyUser(user: any) {
+    const trialDaysRemaining = this.getDaysRemaining(user.trialEndDate || null);
+
+    return {
+      id: null,
+      userId: user.userId,
+      userName: user.fullName || user.userId,
+      email: user.email || null,
+      mobile: user.mobile || null,
+      userPlan: user.plan || null,
+      planType: 'Trial',
+      price: '0',
+      currency: 'INR',
+      status: AdminSubscriptionStatus.Pending,
+      startDate: user.trialStartDate || null,
+      endDate: user.trialEndDate || null,
+      daysToExpiry: trialDaysRemaining,
+      autoRenew: false,
+      paymentId: null,
+      notes: 'Trial user (no paid subscription yet)',
+      isTrialActive: Boolean(user.isTrialActive),
+      trialStartDate: user.trialStartDate || null,
+      trialEndDate: user.trialEndDate || null,
+      trialDaysRemaining,
+      accessType: 'trial',
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      sourceType: 'trial-only',
+    };
+  }
+
+  async getAllSubscriptions(query: AdminSubscriptionListQueryDto = {}) {
+    const {
+      search = null,
+      status = 'all',
+      planType = 'all',
+      accessType = 'all',
+      page = '1',
+      limit = '20',
+    } = query;
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.max(1, Math.min(200, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const normalizedSearch = String(search || '').trim();
+    const normalizedStatus = String(status).toLowerCase();
+    const normalizedPlanType = String(planType).toLowerCase();
+    const normalizedAccessType = String(accessType).toLowerCase();
+
+    const where: any = {};
+
+    if (normalizedStatus !== 'all') {
+      where.status = status;
+    }
+
+    if (normalizedPlanType !== 'all') {
+      where.planType = planType;
+    }
+
+    if (normalizedSearch) {
+      where.OR = [
+        { userId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { paymentId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { notes: { contains: normalizedSearch, mode: 'insensitive' } },
+        {
+          userManagement: {
+            fullName: { contains: normalizedSearch, mode: 'insensitive' },
+          },
+        },
+        {
+          userManagement: {
+            email: { contains: normalizedSearch, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
+
+    const subscriptions = await this.prisma.subscription.findMany({
+      where,
+      include: {
+        userManagement: {
+          select: {
+            userId: true,
+            fullName: true,
+            email: true,
+            mobile: true,
+            plan: true,
+            isTrialActive: true,
+            trialStartDate: true,
+            trialEndDate: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    let rows = subscriptions.map((item) => this.mapAdminSubscription(item));
+
+    if (normalizedPlanType === 'all' && (normalizedStatus === 'all' || normalizedStatus === 'pending')) {
+      const trialUserWhere: any = {
+        isTrialActive: true,
+        OR: [{ trialEndDate: null }, { trialEndDate: { gte: new Date() } }],
+      };
+
+      if (normalizedSearch) {
+        trialUserWhere.AND = [
+          {
+            OR: [
+              { userId: { contains: normalizedSearch, mode: 'insensitive' } },
+              { fullName: { contains: normalizedSearch, mode: 'insensitive' } },
+              { email: { contains: normalizedSearch, mode: 'insensitive' } },
+              { mobile: { contains: normalizedSearch, mode: 'insensitive' } },
+            ],
+          },
+        ];
+      }
+
+      const trialOnlyUsers = await this.prisma.userManagement.findMany({
+        where: trialUserWhere,
+        select: {
+          userId: true,
+          fullName: true,
+          email: true,
+          mobile: true,
+          plan: true,
+          isTrialActive: true,
+          trialStartDate: true,
+          trialEndDate: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: [{ trialEndDate: 'asc' }, { createdAt: 'desc' }],
+      });
+
+      const usersWithSubscription = new Set(rows.map((row) => row.userId));
+      const mappedTrialOnlyRows = trialOnlyUsers
+        .filter((user) => !usersWithSubscription.has(user.userId))
+        .map((user) => this.mapTrialOnlyUser(user));
+
+      rows = [...rows, ...mappedTrialOnlyRows];
+    }
+
+    if (normalizedAccessType !== 'all') {
+      rows = rows.filter((row) => row.accessType.toLowerCase() === normalizedAccessType);
+    }
+
+    const total = rows.length;
+    const pagedRows = rows.slice(skip, skip + limitNum);
+
+    const summary = {
+      totalSubscriptions: total,
+      activeSubscriptions: rows.filter((row) => row.status === AdminSubscriptionStatus.Active).length,
+      expiredSubscriptions: rows.filter((row) => row.status === AdminSubscriptionStatus.Expired).length,
+      cancelledSubscriptions: rows.filter((row) => row.status === AdminSubscriptionStatus.Cancelled).length,
+      pendingSubscriptions: rows.filter((row) => row.status === AdminSubscriptionStatus.Pending).length,
+      expiringIn7Days: rows.filter(
+        (row) =>
+          row.status === AdminSubscriptionStatus.Active &&
+          row.daysToExpiry !== null &&
+          row.daysToExpiry >= 0 &&
+          row.daysToExpiry <= 7,
+      ).length,
+      trialEndingIn7Days: rows.filter(
+        (row) =>
+          row.isTrialActive &&
+          row.trialDaysRemaining !== null &&
+          row.trialDaysRemaining >= 0 &&
+          row.trialDaysRemaining <= 7,
+      ).length,
+      trialOnlyUsers: rows.filter((row) => row.sourceType === 'trial-only').length,
+    };
+
+    const planStatsMap = new Map<string, number>();
+    rows.forEach((row) => {
+      const key = row.planType || 'Unknown';
+      planStatsMap.set(key, (planStatsMap.get(key) || 0) + 1);
+    });
+
+    const planStats = Array.from(planStatsMap.entries()).map(([plan, count]) => ({
+      plan,
+      count,
+    }));
+
+    return {
+      success: true,
+      message: 'Subscriptions fetched successfully',
+      data: {
+        subscriptions: pagedRows,
+        summary,
+        planStats,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.ceil(total / limitNum),
+        },
+      },
+    };
+  }
+
+  async getSubscriptionDetails(subscriptionId: number) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        userManagement: {
+          select: {
+            userId: true,
+            fullName: true,
+            email: true,
+            mobile: true,
+            plan: true,
+            isTrialActive: true,
+            trialStartDate: true,
+            trialEndDate: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    const history = await this.prisma.subscription.findMany({
+      where: { userId: subscription.userId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 10,
+      select: {
+        id: true,
+        planType: true,
+        status: true,
+        price: true,
+        currency: true,
+        startDate: true,
+        endDate: true,
+        paymentId: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Subscription details fetched successfully',
+      data: {
+        ...this.mapAdminSubscription(subscription),
+        history: history.map((item) => ({
+          ...item,
+          price: String(item.price),
+        })),
+      },
+    };
+  }
+
+  async updateSubscription(subscriptionId: number, updateDto: UpdateAdminSubscriptionDto) {
+    const existing = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        userManagement: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    const subscriptionData: any = {};
+    if (updateDto.status) subscriptionData.status = updateDto.status;
+    if (updateDto.planType) subscriptionData.planType = updateDto.planType;
+    if (typeof updateDto.autoRenew === 'boolean') subscriptionData.autoRenew = updateDto.autoRenew;
+    if (typeof updateDto.notes === 'string') subscriptionData.notes = updateDto.notes.trim() || null;
+
+    if (updateDto.endDate) {
+      const endDate = new Date(updateDto.endDate);
+      if (Number.isNaN(endDate.getTime())) {
+        throw new BadRequestException('Invalid endDate');
+      }
+      subscriptionData.endDate = endDate;
+    }
+
+    const userData: any = {};
+    if (updateDto.userPlan) userData.plan = updateDto.userPlan;
+    if (typeof updateDto.isTrialActive === 'boolean') userData.isTrialActive = updateDto.isTrialActive;
+
+    if (updateDto.trialEndDate) {
+      const trialEndDate = new Date(updateDto.trialEndDate);
+      if (Number.isNaN(trialEndDate.getTime())) {
+        throw new BadRequestException('Invalid trialEndDate');
+      }
+      userData.trialEndDate = trialEndDate;
+    }
+
+    if (Object.keys(subscriptionData).length === 0 && Object.keys(userData).length === 0) {
+      throw new BadRequestException('No valid fields provided for update');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(subscriptionData).length > 0) {
+        await tx.subscription.update({
+          where: { id: subscriptionId },
+          data: subscriptionData,
+        });
+      }
+
+      if (Object.keys(userData).length > 0) {
+        await tx.userManagement.update({
+          where: { userId: existing.userId },
+          data: userData,
+        });
+      }
+
+      if (
+        updateDto.status === AdminSubscriptionStatus.Active &&
+        typeof updateDto.userPlan === 'undefined' &&
+        typeof updateDto.isTrialActive === 'undefined'
+      ) {
+        await tx.userManagement.update({
+          where: { userId: existing.userId },
+          data: {
+            plan: AdminManagedUserPlan.Pro,
+            isTrialActive: false,
+          },
+        });
+      }
+    });
+
+    await this.createAuditLog({
+      adminId: 'admin',
+      action: 'UPDATE',
+      targetType: 'Subscription',
+      targetId: String(subscriptionId),
+      description: 'Updated subscription from admin panel',
+      changes: {
+        subscription: subscriptionData,
+        user: userData,
+      },
+      status: 'success',
+    } as CreateAuditLogDto);
+
+    return this.getSubscriptionDetails(subscriptionId);
   }
 
   private getDocumentCategoryByType(documentType: string) {

@@ -45,13 +45,13 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AIAssistant } from "@/components/ai-assistant"
-import { LanguageSwitcher } from "@/components/language-switcher"
 import { useUser } from "@auth0/nextjs-auth0/client"
 import { useEffect } from 'react'
 import { deriveUserRole, getPrimaryEmail } from '@/lib/roles'
 import { useRouter } from 'next/navigation'
 import { useBusiness } from "@/contexts/business-context"
 import { useState } from "react"
+import { subscriptionApi, type UserSubscriptionStatus } from "@/lib/api"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
@@ -89,7 +89,26 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     status: string
     createdAt: string
   } | null>(null)
+  const [subscriptionStatus, setSubscriptionStatus] = useState<UserSubscriptionStatus | null>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const userId = (user as any)?.sub || ""
+
+  const formatAccessDate = (dateValue?: string | null) => {
+    if (!dateValue) {
+      return "-"
+    }
+
+    const date = new Date(dateValue)
+    if (Number.isNaN(date.getTime())) {
+      return "-"
+    }
+
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+  }
 
   // If an admin signs in and is sent to /dashboard (default), redirect them to /admin-dashboard automatically
   useEffect(() => {
@@ -130,6 +149,27 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadHeaderNotifications()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  useEffect(() => {
+    const loadSubscriptionStatus = async () => {
+      if (!userId) {
+        setSubscriptionStatus(null)
+        return
+      }
+
+      try {
+        setSubscriptionLoading(true)
+        const status = await subscriptionApi.getUserStatus(userId)
+        setSubscriptionStatus(status)
+      } catch {
+        setSubscriptionStatus(null)
+      } finally {
+        setSubscriptionLoading(false)
+      }
+    }
+
+    loadSubscriptionStatus()
   }, [userId])
 
   const handleMarkAllNotificationsRead = async () => {
@@ -304,16 +344,32 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-3 border border-emerald-100">
                   <div className="flex items-center space-x-2 mb-2">
                     <Sparkles className="w-3 h-3 text-emerald-600" />
-                    <span className="text-xs font-semibold text-emerald-700">This Month</span>
+                    <span className="text-xs font-semibold text-emerald-700">Plan Status</span>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600">GST Filed</span>
-                      <span className="text-sm font-bold text-emerald-700">{selectedBusiness.gstFiled}</span>
+                      <span className="text-xs text-gray-600">Current Plan</span>
+                      <span className="text-xs font-bold text-emerald-700">
+                        {subscriptionLoading
+                          ? 'Loading...'
+                          : subscriptionStatus?.currentPlanLabel || 'Basic Trial'}
+                      </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600">Due Date</span>
-                      <span className="text-xs text-orange-600 font-medium">{selectedBusiness.dueDate}</span>
+                      <span className="text-xs text-gray-600">Days Left</span>
+                      <span className="text-sm font-bold text-orange-600">
+                        {subscriptionStatus?.currentAccessType === 'trial'
+                          ? `${subscriptionStatus.trialDaysRemaining} days`
+                          : subscriptionStatus?.currentAccessType === 'subscription'
+                            ? `${subscriptionStatus.subscriptionDaysRemaining} days`
+                            : 'Expired'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-600">Valid Till</span>
+                      <span className="text-xs text-gray-700 font-medium">
+                        {formatAccessDate(subscriptionStatus?.accessEndsAt)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -351,7 +407,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
             <SidebarTrigger className="-ml-1" />
             <div className="flex-1" />
-            <LanguageSwitcher />
             <Button variant="ghost" size="icon" className="relative" onClick={handleToggleNotificationWindow}>
               <Bell className="w-4 h-4" />
               {unreadCount > 0 && (

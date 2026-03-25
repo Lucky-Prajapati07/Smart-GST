@@ -1,4 +1,5 @@
 import { 
+  BadRequestException,
   Controller, 
   Get, 
   Post, 
@@ -12,15 +13,48 @@ import {
   UsePipes,
   ValidationPipe
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UseInterceptors, UploadedFile } from '@nestjs/common';
+import type { File as MulterFile } from 'multer';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import { InvoiceResponseDto } from './dto/invoice-response.dto';
+import { OcrExtractResponseDto } from './dto/ocr-extract-response.dto';
 
 @Controller('invoices')
 @UsePipes(new ValidationPipe({ transform: true }))
 export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}
+
+  @Post('ocr/extract')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 10 * 1024 * 1024,
+      },
+    }),
+  )
+  async extractFromOcr(
+    @UploadedFile() file: MulterFile,
+    @Body('userId') userId: string,
+    @Body('createClientIfMissing') createClientIfMissing?: string | boolean,
+  ): Promise<OcrExtractResponseDto> {
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+
+    const shouldCreateClient =
+      createClientIfMissing === undefined
+        ? true
+        : String(createClientIfMissing).toLowerCase() !== 'false';
+
+    return await this.invoicesService.extractFromDocument(userId, file, shouldCreateClient);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -38,7 +72,7 @@ export class InvoicesController {
     @Query('endDate') endDate?: string,
   ): Promise<InvoiceResponseDto[]> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     
     if (startDate && endDate) {
@@ -59,7 +93,7 @@ export class InvoicesController {
   @Get('stats')
   async getStats(@Query('userId') userId: string): Promise<any> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.getInvoiceStats(userId);
   }
@@ -70,7 +104,7 @@ export class InvoicesController {
     @Param('invoiceNumber') invoiceNumber: string
   ): Promise<InvoiceResponseDto> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.findByInvoiceNumber(userId, invoiceNumber);
   }
@@ -81,7 +115,7 @@ export class InvoicesController {
     @Param('partyGstin') partyGstin: string
   ): Promise<InvoiceResponseDto[]> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.findByPartyGstin(userId, partyGstin);
   }
@@ -92,7 +126,7 @@ export class InvoicesController {
     @Param('invoiceType') invoiceType: string
   ): Promise<InvoiceResponseDto[]> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.findByInvoiceType(userId, invoiceType);
   }
@@ -103,7 +137,7 @@ export class InvoicesController {
     @Param('status') status: string
   ): Promise<InvoiceResponseDto[]> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.findByStatus(userId, status);
   }
@@ -114,11 +148,11 @@ export class InvoicesController {
     @Param('id') id: string
   ): Promise<InvoiceResponseDto> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     const invoiceId = parseInt(id, 10);
     if (isNaN(invoiceId)) {
-      throw new Error('Invalid ID format');
+      throw new BadRequestException('Invalid ID format');
     }
     return await this.invoicesService.findOne(userId, invoiceId);
   }
@@ -130,11 +164,11 @@ export class InvoicesController {
     @Body() updateInvoiceDto: UpdateInvoiceDto
   ): Promise<InvoiceResponseDto> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     const invoiceId = parseInt(id, 10);
     if (isNaN(invoiceId)) {
-      throw new Error('Invalid ID format');
+      throw new BadRequestException('Invalid ID format');
     }
     return await this.invoicesService.update(userId, invoiceId, updateInvoiceDto);
   }
@@ -146,7 +180,7 @@ export class InvoicesController {
     @Body() updateInvoiceDto: UpdateInvoiceDto
   ): Promise<InvoiceResponseDto> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.updateByInvoiceNumber(userId, invoiceNumber, updateInvoiceDto);
   }
@@ -158,11 +192,11 @@ export class InvoicesController {
     @Param('id') id: string
   ): Promise<{ message: string }> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     const invoiceId = parseInt(id, 10);
     if (isNaN(invoiceId)) {
-      throw new Error('Invalid ID format');
+      throw new BadRequestException('Invalid ID format');
     }
     return await this.invoicesService.remove(userId, invoiceId);
   }
@@ -174,7 +208,7 @@ export class InvoicesController {
     @Param('invoiceNumber') invoiceNumber: string
   ): Promise<{ message: string }> {
     if (!userId) {
-      throw new Error('userId is required');
+      throw new BadRequestException('userId is required');
     }
     return await this.invoicesService.removeByInvoiceNumber(userId, invoiceNumber);
   }

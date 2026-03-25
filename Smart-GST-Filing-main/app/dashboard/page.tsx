@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SubscriptionStatus } from "@/components/subscription-status"
 
 type DashboardStats = {
   totalRevenue: number
@@ -43,6 +44,21 @@ type UpcomingItem = {
   amount?: string
 }
 
+type UpcomingApiResponse = {
+  invoices?: Array<{
+    invoiceNumber?: string
+    dueDate?: string
+    amount?: string
+    totalAmount?: string
+  }>
+  gstFilings?: Array<{
+    filingType?: string
+    dueDate?: string
+  }>
+}
+
+type UserReminderStatus = 'Pending' | 'Completed'
+
 export default function DashboardPage() {
   const [isVisible, setIsVisible] = useState(false)
   const router = useRouter()
@@ -58,6 +74,16 @@ export default function DashboardPage() {
   const [reminderHistory, setReminderHistory] = useState<Reminder[]>([])
   const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false)
   const [savingReminder, setSavingReminder] = useState(false)
+  const [processingReminderId, setProcessingReminderId] = useState<number | null>(null)
+  const [isEditReminderDialogOpen, setIsEditReminderDialogOpen] = useState(false)
+  const [editingReminderId, setEditingReminderId] = useState<number | null>(null)
+  const [editReminderForm, setEditReminderForm] = useState({
+    title: "",
+    description: "",
+    date: new Date().toISOString().split("T")[0],
+    time: "09:00",
+    recipientEmail: "",
+  })
   const [reminderForm, setReminderForm] = useState({
     title: "",
     description: "",
@@ -93,8 +119,25 @@ export default function DashboardPage() {
       const activity = await dashboardApi.getRecentActivity(user.sub, 5)
       setRecentActivity(activity || { invoices: [], expenses: [] })
       
-      // Load upcoming due dates
-      const upcoming = await dashboardApi.getUpcoming(user.sub, 30)
+      // Load upcoming due dates and normalize backend shape.
+      const upcomingResponse: UpcomingApiResponse = await dashboardApi.getUpcoming(user.sub, 30)
+      const upcomingFromApi: UpcomingItem[] = [
+        ...((upcomingResponse?.invoices || [])
+          .filter((invoice) => !!invoice?.dueDate)
+          .map((invoice) => ({
+            type: 'invoice' as const,
+            title: `Invoice: ${invoice.invoiceNumber || 'Pending invoice'}`,
+            dueDate: invoice.dueDate as string,
+            amount: invoice.totalAmount || invoice.amount,
+          }))),
+        ...((upcomingResponse?.gstFilings || [])
+          .filter((filing) => !!filing?.dueDate)
+          .map((filing) => ({
+            type: 'gst' as const,
+            title: `GST: ${filing.filingType || 'GST filing'}`,
+            dueDate: filing.dueDate as string,
+          }))),
+      ]
 
       // Load user reminders and merge into upcoming list.
       // If reminders endpoint has an issue, keep dashboard data available.
@@ -118,7 +161,7 @@ export default function DashboardPage() {
           dueDate: reminder.scheduledFor,
         }))
 
-      const mergedUpcoming = [...(upcoming || []), ...reminderUpcoming].sort(
+      const mergedUpcoming = [...upcomingFromApi, ...reminderUpcoming].sort(
         (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
       )
 
@@ -168,15 +211,6 @@ export default function DashboardPage() {
       return
     }
 
-    if (!reminderForm.recipientEmail.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter the email for reminder delivery",
-        variant: "destructive",
-      })
-      return
-    }
-
     const scheduledFor = `${reminderForm.date}T${reminderForm.time}:00`
 
     try {
@@ -186,12 +220,12 @@ export default function DashboardPage() {
         title: reminderForm.title.trim(),
         description: reminderForm.description.trim() || undefined,
         scheduledFor,
-        recipientEmail: reminderForm.recipientEmail.trim().toLowerCase(),
+        recipientEmail: (user?.email || reminderForm.recipientEmail || 'noreply@smartgst.local').trim().toLowerCase(),
       })
 
       toast({
         title: "Reminder created",
-        description: "Your reminder has been scheduled and email will be sent on time.",
+        description: "Your task reminder has been scheduled.",
       })
 
       setIsReminderDialogOpen(false)
@@ -216,6 +250,169 @@ export default function DashboardPage() {
       })
     } finally {
       setSavingReminder(false)
+    }
+  }
+
+  const toLocalDateInputValue = (value: string) => {
+    const date = new Date(value)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const toLocalTimeInputValue = (value: string) => {
+    const date = new Date(value)
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }
+
+  const openEditReminderDialog = (reminder: Reminder) => {
+    if (!reminder.id) {
+      return
+    }
+
+    setEditingReminderId(reminder.id)
+    setEditReminderForm({
+      title: reminder.title || "",
+      description: reminder.description || "",
+      date: toLocalDateInputValue(reminder.scheduledFor),
+      time: toLocalTimeInputValue(reminder.scheduledFor),
+      recipientEmail: reminder.recipientEmail || user?.email || "",
+    })
+    setIsEditReminderDialogOpen(true)
+  }
+
+  const handleReminderStatusChange = async (reminderId: number, status: UserReminderStatus) => {
+    if (!user?.sub) {
+      return
+    }
+
+    try {
+      setProcessingReminderId(reminderId)
+      await remindersApi.update(user.sub, reminderId, { status })
+      toast({
+        title: "Reminder updated",
+        description: `Reminder marked as ${status}.`,
+      })
+
+      // Keep action success independent from dashboard refresh availability.
+      await loadDashboardData().catch((refreshError) => {
+        console.warn('Reminder status updated but dashboard refresh failed:', refreshError)
+        toast({
+          title: "Refresh warning",
+          description: "Reminder was updated, but dashboard refresh failed. Please reload.",
+          variant: "destructive",
+        })
+      })
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage || 'Failed to update reminder status'
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingReminderId(null)
+    }
+  }
+
+  const handleReminderDelete = async (reminderId: number) => {
+    if (!user?.sub) {
+      return
+    }
+
+    try {
+      setProcessingReminderId(reminderId)
+      await remindersApi.delete(user.sub, reminderId)
+      toast({
+        title: "Reminder deleted",
+        description: "Reminder removed successfully.",
+      })
+
+      // Update local lists immediately so delete feels responsive.
+      setReminderHistory((prev) => prev.filter((item) => item.id !== reminderId))
+
+      // Refresh in background but do not convert refresh errors into delete failures.
+      await loadDashboardData().catch((refreshError) => {
+        console.warn('Reminder deleted but dashboard refresh failed:', refreshError)
+        toast({
+          title: "Refresh warning",
+          description: "Reminder was deleted, but dashboard refresh failed. Please reload.",
+          variant: "destructive",
+        })
+      })
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage || 'Failed to delete reminder'
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingReminderId(null)
+    }
+  }
+
+  const handleReminderUpdate = async () => {
+    if (!user?.sub || !editingReminderId) {
+      return
+    }
+
+    if (!editReminderForm.title.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a reminder title",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const scheduledFor = `${editReminderForm.date}T${editReminderForm.time}:00`
+
+    try {
+      setProcessingReminderId(editingReminderId)
+      await remindersApi.update(user.sub, editingReminderId, {
+        title: editReminderForm.title.trim(),
+        description: editReminderForm.description.trim() || undefined,
+        scheduledFor,
+      })
+
+      toast({
+        title: "Reminder updated",
+        description: "Reminder details updated successfully.",
+      })
+
+      setIsEditReminderDialogOpen(false)
+      setEditingReminderId(null)
+
+      await loadDashboardData().catch((refreshError) => {
+        console.warn('Reminder updated but dashboard refresh failed:', refreshError)
+        toast({
+          title: "Refresh warning",
+          description: "Reminder was updated, but dashboard refresh failed. Please reload.",
+          variant: "destructive",
+        })
+      })
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage || 'Failed to update reminder'
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingReminderId(null)
     }
   }
   
@@ -243,6 +440,8 @@ export default function DashboardPage() {
             <div className="text-white/80 text-base font-medium mt-2">{selectedBusiness?.name} • GSTIN: {selectedBusiness?.gst}</div>
           </div>
         </div>
+
+        <SubscriptionStatus />
 
         {/* Summary Data Cards - Real-time from backend */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -326,7 +525,7 @@ export default function DashboardPage() {
             <DialogHeader>
               <DialogTitle>Set Task Reminder</DialogTitle>
               <DialogDescription>
-                Create a scheduled reminder. An email will be sent to the registered address at the scheduled time.
+                Create a scheduled task reminder for your dashboard.
               </DialogDescription>
             </DialogHeader>
 
@@ -372,16 +571,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="reminder-email">Reminder email</Label>
-                <Input
-                  id="reminder-email"
-                  type="email"
-                  value={reminderForm.recipientEmail}
-                  onChange={(e) => setReminderForm((prev) => ({ ...prev, recipientEmail: e.target.value }))}
-                  placeholder="your@email.com"
-                />
-              </div>
             </div>
 
             <DialogFooter>
@@ -390,6 +579,76 @@ export default function DashboardPage() {
               </Button>
               <Button onClick={handleCreateReminder} disabled={savingReminder}>
                 {savingReminder ? 'Saving...' : 'Save Reminder'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isEditReminderDialogOpen} onOpenChange={setIsEditReminderDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Update Reminder</DialogTitle>
+              <DialogDescription>
+                Edit your reminder details, then save the updated task.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-reminder-title">Task title</Label>
+                <Input
+                  id="edit-reminder-title"
+                  value={editReminderForm.title}
+                  onChange={(e) => setEditReminderForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="e.g. File GSTR-3B for March"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-reminder-description">Description</Label>
+                <Textarea
+                  id="edit-reminder-description"
+                  value={editReminderForm.description}
+                  onChange={(e) => setEditReminderForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional notes"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-reminder-date">Date</Label>
+                  <Input
+                    id="edit-reminder-date"
+                    type="date"
+                    value={editReminderForm.date}
+                    onChange={(e) => setEditReminderForm((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-reminder-time">Time</Label>
+                  <Input
+                    id="edit-reminder-time"
+                    type="time"
+                    value={editReminderForm.time}
+                    onChange={(e) => setEditReminderForm((prev) => ({ ...prev, time: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditReminderDialogOpen(false)
+                  setEditingReminderId(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleReminderUpdate} disabled={processingReminderId === editingReminderId}>
+                {processingReminderId === editingReminderId ? 'Updating...' : 'Update Reminder'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -499,9 +758,46 @@ export default function DashboardPage() {
                       {reminder.description && (
                         <p className="text-xs text-gray-600 mt-1 line-clamp-2">{reminder.description}</p>
                       )}
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          variant={reminder.status === 'Pending' ? 'default' : 'outline'}
+                          disabled={processingReminderId === reminder.id || !reminder.id}
+                          onClick={() => reminder.id && handleReminderStatusChange(reminder.id, 'Pending')}
+                        >
+                          Pending
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={reminder.status === 'Completed' ? 'default' : 'outline'}
+                          disabled={processingReminderId === reminder.id || !reminder.id}
+                          onClick={() => reminder.id && handleReminderStatusChange(reminder.id, 'Completed')}
+                        >
+                          Completed
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={processingReminderId === reminder.id || !reminder.id}
+                          onClick={() => openEditReminderDialog(reminder)}
+                        >
+                          Update
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={processingReminderId === reminder.id || !reminder.id}
+                          onClick={() => reminder.id && handleReminderDelete(reminder.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        reminder.status === 'Completed'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          :
                         reminder.status === 'Sent'
                           ? 'bg-green-100 text-green-700'
                           : reminder.status === 'Failed'

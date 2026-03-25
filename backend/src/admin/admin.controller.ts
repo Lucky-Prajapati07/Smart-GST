@@ -30,6 +30,8 @@ import {
   UpdateFilingStatusDto,
   DocumentListQueryDto,
   UpdateDocumentStatusDto,
+  AdminSubscriptionListQueryDto,
+  UpdateAdminSubscriptionDto,
   CreateAdminNotificationDto,
   NotificationListQueryDto,
   UserNotificationsQueryDto,
@@ -612,6 +614,88 @@ export class AdminController {
       return res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
         message: error.message || 'Failed to fetch user filings',
+        error: error.message,
+      });
+    }
+  }
+
+  // ===== SUBSCRIPTION MANAGEMENT ROUTES =====
+
+  /**
+   * GET /admin/subscriptions
+   * Get subscriptions with user-wise trial and plan details
+   */
+  @Get('subscriptions')
+  async getAllSubscriptions(
+    @Query() query: AdminSubscriptionListQueryDto,
+    @Res() res: Response
+  ) {
+    try {
+      const result = await this.adminService.getAllSubscriptions(query);
+      return res.status(HttpStatus.OK).json(result);
+    } catch (error: any) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message: error.message || 'Failed to fetch subscriptions',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * GET /admin/subscriptions/:id
+   * Get single subscription with user and trial details
+   */
+  @Get('subscriptions/:id')
+  async getSubscriptionDetails(@Param('id') id: string, @Res() res: Response) {
+    try {
+      const subscriptionId = parseInt(id, 10);
+      if (!subscriptionId) {
+        throw new BadRequestException('Valid subscription ID is required');
+      }
+
+      const result = await this.adminService.getSubscriptionDetails(subscriptionId);
+      return res.status(HttpStatus.OK).json(result);
+    } catch (error: any) {
+      const statusCode = error.message?.includes('not found')
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+
+      return res.status(statusCode).json({
+        success: false,
+        message: error.message || 'Failed to fetch subscription details',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * PATCH /admin/subscriptions/:id
+   * Update subscription fields from admin module
+   */
+  @Patch('subscriptions/:id')
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async updateSubscription(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateAdminSubscriptionDto,
+    @Res() res: Response
+  ) {
+    try {
+      const subscriptionId = parseInt(id, 10);
+      if (!subscriptionId) {
+        throw new BadRequestException('Valid subscription ID is required');
+      }
+
+      const result = await this.adminService.updateSubscription(subscriptionId, updateDto);
+      return res.status(HttpStatus.OK).json(result);
+    } catch (error: any) {
+      const statusCode = error.message?.includes('not found')
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+
+      return res.status(statusCode).json({
+        success: false,
+        message: error.message || 'Failed to update subscription',
         error: error.message,
       });
     }

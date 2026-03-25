@@ -44,9 +44,23 @@ enum ManagedBusinessStatus {
 
 enum ReminderStatus {
   Pending
+  Completed
   Sent
   Cancelled
   Failed
+}
+
+enum SubscriptionPlanType {
+  Monthly
+  HalfYearly
+  Yearly
+}
+
+enum SubscriptionStatus {
+  Active
+  Expired
+  Cancelled
+  Pending
 }
 
 model Business {
@@ -185,6 +199,24 @@ model Invoices {
   @@unique([userId, invoiceNumber])
   @@index([userId])
   @@index([userId, invoiceDate])
+}
+
+model InvoiceOcrDocument {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  fileName      String
+  mimeType      String
+  fileSize      Int
+  ocrEngine     String
+  rawText       String?
+  extractedData Json?
+  confidence    Float?
+  status        String   @default("Processed")
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model Expenses {
@@ -460,17 +492,43 @@ model UserManagement {
   mobile        String?
   status        ManagedUserStatus @default(Pending)
   plan          ManagedUserPlan   @default(Basic)
-  lastLoginAt   DateTime?
-  deactivatedAt DateTime?
-  deletedAt     DateTime?
-  notes         String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  trialStartDate DateTime?         // When the 30-day trial starts
+  trialEndDate   DateTime?         // Auto-calculated: trialStartDate + 30 days
+  isTrialActive  Boolean           @default(true)  // Whether trial is still ongoing
+  subscriptions  Subscription[]    // Relationship to subscriptions
+  lastLoginAt    DateTime?
+  deactivatedAt  DateTime?
+  deletedAt      DateTime?
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([email])
   @@index([status])
   @@index([plan])
   @@index([deletedAt])
+}
+
+model Subscription {
+  id                Int                   @id @default(autoincrement())
+  userId            String
+  userManagement    UserManagement        @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  planType          SubscriptionPlanType
+  price             Decimal   @db.Decimal(10, 2)
+  currency          String    @default("INR")
+  status            SubscriptionStatus    @default(Active)
+  startDate         DateTime
+  endDate           DateTime  // Auto-calculated based on plan type
+  autoRenew         Boolean   @default(true)
+  paymentId         String?   // Reference to payment gateway transaction ID
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, id])
+  @@index([userId])
+  @@index([status])
+  @@index([endDate])
 }
 
 model ManagedDocument {
