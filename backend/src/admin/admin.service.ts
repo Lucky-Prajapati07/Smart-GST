@@ -404,53 +404,73 @@ export class AdminService {
 
     const total = await this.prisma.userManagement.count({ where });
 
-    const users = await Promise.all(
-      managedUsers.map(async (managedUser) => {
-        const business = await this.prisma.business.findFirst({
-          where: { userId: managedUser.userId },
-          select: {
-            businessName: true,
-            gstin: true,
-            createdAt: true,
-            isActive: true,
-          },
-        });
+    // Batch fetch all related data instead of N+1 queries
+    const userIds = managedUsers.map(u => u.userId);
 
-        const settings = await this.prisma.settings.findUnique({
-          where: { userId: managedUser.userId },
-          select: {
-            email: true,
-            phone: true,
-            companyName: true,
-            gstin: true,
-          },
-        });
+    // Fetch all businesses at once
+    const businesses = await this.prisma.business.findMany({
+      where: { userId: { in: userIds } },
+      select: {
+        userId: true,
+        businessName: true,
+        gstin: true,
+        createdAt: true,
+        isActive: true,
+      },
+    });
+    const businessMap = new Map(businesses.map(b => [b.userId, b]));
 
-        const invoiceCount = await this.prisma.invoices.count({
-          where: { userId: managedUser.userId },
-        });
+    // Fetch all settings at once
+    const allSettings = await this.prisma.settings.findMany({
+      where: { userId: { in: userIds } },
+      select: {
+        userId: true,
+        email: true,
+        phone: true,
+        companyName: true,
+        gstin: true,
+      },
+    });
+    const settingsMap = new Map(allSettings.map(s => [s.userId, s]));
 
-        const filingCount = await this.prisma.gSTFiling.count({
-          where: { userId: managedUser.userId },
-        });
+    // Fetch invoice counts for all users at once
+    const invoiceCounts = await this.prisma.invoices.groupBy({
+      by: ['userId'],
+      where: { userId: { in: userIds } },
+      _count: { userId: true },
+    });
+    const invoiceCountMap = new Map(invoiceCounts.map(ic => [ic.userId, ic._count.userId]));
 
-        return {
-          id: managedUser.userId,
-          name: managedUser.fullName,
-          email: settings?.email || managedUser.email,
-          business: business?.businessName || settings?.companyName || 'N/A',
-          gstin: business?.gstin || settings?.gstin || 'N/A',
-          mobile: settings?.phone || managedUser.mobile || 'N/A',
-          signupDate: business?.createdAt || managedUser.createdAt,
-          lastLogin: managedUser.lastLoginAt,
-          status: managedUser.status,
-          plan: managedUser.plan,
-          filings: filingCount,
-          invoices: invoiceCount,
-          isActiveBusiness: business?.isActive ?? null,
-        };
-      })
-    );
+    // Fetch filing counts for all users at once
+    const filingCounts = await this.prisma.gSTFiling.groupBy({
+      by: ['userId'],
+      where: { userId: { in: userIds } },
+      _count: { userId: true },
+    });
+    const filingCountMap = new Map(filingCounts.map(fc => [fc.userId, fc._count.userId]));
+
+    const users = managedUsers.map((managedUser) => {
+      const business = businessMap.get(managedUser.userId);
+      const settings = settingsMap.get(managedUser.userId);
+      const invoiceCount = invoiceCountMap.get(managedUser.userId) || 0;
+      const filingCount = filingCountMap.get(managedUser.userId) || 0;
+
+      return {
+        id: managedUser.userId,
+        name: managedUser.fullName,
+        email: settings?.email || managedUser.email,
+        business: business?.businessName || settings?.companyName || 'N/A',
+        gstin: business?.gstin || settings?.gstin || 'N/A',
+        mobile: settings?.phone || managedUser.mobile || 'N/A',
+        signupDate: business?.createdAt || managedUser.createdAt,
+        lastLogin: managedUser.lastLoginAt,
+        status: managedUser.status,
+        plan: managedUser.plan,
+        filings: filingCount,
+        invoices: invoiceCount,
+        isActiveBusiness: business?.isActive ?? null,
+      };
+    });
 
     const [activeUsers, inactiveUsers, pendingUsers] = await Promise.all([
       this.prisma.userManagement.count({ where: { deletedAt: null, status: AdminManagedUserStatus.Active } }),

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,8 @@ export default function ClientsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientResponse | null>(null)
+  const [isSameAddressChecked, setIsSameAddressChecked] = useState(false)
+  const [isEditSameAddressChecked, setIsEditSameAddressChecked] = useState(false)
 
   useEffect(() => {
     setIsVisible(true)
@@ -78,6 +81,7 @@ export default function ClientsPage() {
     try {
       await createClient(formData);
       resetForm();
+      setIsSameAddressChecked(false);
       setIsDialogOpen(false);
       toast({
         title: "Success",
@@ -130,6 +134,7 @@ export default function ClientsPage() {
     try {
       await updateClient(selectedClient.id, formData);
       resetForm();
+      setIsEditSameAddressChecked(false);
       setIsEditDialogOpen(false);
       setSelectedClient(null);
       toast({
@@ -167,6 +172,48 @@ export default function ClientsPage() {
         description: "Failed to delete client. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  // Function to copy recipient address to shipping address
+  const handleCopyAddressToShipping = () => {
+    if (isSameAddressChecked) {
+      // Copy values from recipient address to shipping address
+      updateField('shippingAddress', formData.address);
+      updateField('shippingState', formData.place);
+      updateField('shippingStateCode', formData.stateCode);
+      updateField('shippingPincode', formData.pincode);
+      toast({
+        title: "Address Copied",
+        description: "Recipient address copied to shipping address",
+      });
+    } else {
+      // Clear shipping address fields
+      updateField('shippingAddress', '');
+      updateField('shippingState', '');
+      updateField('shippingStateCode', '');
+      updateField('shippingPincode', '');
+    }
+  };
+
+  // Function to copy recipient address to shipping address for edit dialog
+  const handleEditCopyAddressToShipping = () => {
+    if (isEditSameAddressChecked) {
+      // Copy values from recipient address to shipping address
+      updateField('shippingAddress', formData.address);
+      updateField('shippingState', formData.place);
+      updateField('shippingStateCode', formData.stateCode);
+      updateField('shippingPincode', formData.pincode);
+      toast({
+        title: "Address Copied",
+        description: "Recipient address copied to shipping address",
+      });
+    } else {
+      // Clear shipping address fields
+      updateField('shippingAddress', '');
+      updateField('shippingState', '');
+      updateField('shippingStateCode', '');
+      updateField('shippingPincode', '');
     }
   };
 
@@ -470,7 +517,25 @@ export default function ClientsPage() {
                             className="w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 bg-white/70 backdrop-blur-sm resize-none"
                           />
                         </div>
+
+                        {/* Shipping Address Section with Checkbox */}
                         <div className="space-y-3">
+                          <div className="flex items-center gap-3 mb-3">
+                            <Checkbox 
+                              id="sameAsRecipient"
+                              checked={isSameAddressChecked}
+                              onCheckedChange={(checked) => {
+                                setIsSameAddressChecked(checked as boolean);
+                                if (checked) {
+                                  handleCopyAddressToShipping();
+                                }
+                              }}
+                              className="w-5 h-5"
+                            />
+                            <Label htmlFor="sameAsRecipient" className="text-sm font-semibold text-gray-700 cursor-pointer">
+                              Shipping Address Same as Recipient Address?
+                            </Label>
+                          </div>
                           <Label htmlFor="shippingAddress" className="text-sm font-semibold text-gray-700">
                             Shipping Address
                           </Label>
@@ -859,6 +924,33 @@ export default function ClientsPage() {
                     <Input id="editPincode" value={formData.pincode} onChange={(e) => updateField('pincode', e.target.value)} className="rounded-xl border-gray-300 h-12" />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="editBillingAddress" className="text-sm font-semibold text-gray-700">Billing Address</Label>
+                <Textarea id="editBillingAddress" value={formData.billingAddress} onChange={(e) => updateField('billingAddress', e.target.value)} rows={3} className="rounded-xl border-gray-300" />
+              </div>
+
+              {/* Shipping Address Section with Checkbox for Edit */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 mb-3">
+                  <Checkbox 
+                    id="editSameAsRecipient"
+                    checked={isEditSameAddressChecked}
+                    onCheckedChange={(checked) => {
+                      setIsEditSameAddressChecked(checked as boolean);
+                      if (checked) {
+                        handleEditCopyAddressToShipping();
+                      }
+                    }}
+                    className="w-5 h-5"
+                  />
+                  <Label htmlFor="editSameAsRecipient" className="text-sm font-semibold text-gray-700 cursor-pointer">
+                    Shipping Address Same as Recipient Address?
+                  </Label>
+                </div>
+                <Label htmlFor="editShippingAddress" className="text-sm font-semibold text-gray-700">Shipping Address</Label>
+                <Textarea id="editShippingAddress" value={formData.shippingAddress} onChange={(e) => updateField('shippingAddress', e.target.value)} rows={3} className="rounded-xl border-gray-300" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

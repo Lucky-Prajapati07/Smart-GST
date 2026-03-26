@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle, Zap } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle, Zap } from 'lucide-react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 
 declare global {
@@ -15,10 +15,65 @@ type PlanType = 'Monthly' | 'HalfYearly' | 'Yearly';
 const TEST_MODE_UPI_SUCCESS = 'success@razorpay';
 const TEST_MODE_UPI_FAILURE = 'failure@razorpay';
 
-const planConfig: Array<{ planType: PlanType; title: string; priceDisplay: string; period: string }> = [
-  { planType: 'Monthly', title: 'Monthly', priceDisplay: '₹999', period: '/month' },
-  { planType: 'HalfYearly', title: 'Half Yearly', priceDisplay: '₹5,499', period: '/6 months' },
-  { planType: 'Yearly', title: 'Yearly', priceDisplay: '₹9,999', period: '/year' },
+const planConfig: Array<{
+  planType: PlanType;
+  title: string;
+  priceDisplay: string;
+  period: string;
+  description: string;
+  popular?: boolean;
+  features: string[];
+}> = [
+  {
+    planType: 'Monthly',
+    title: 'Monthly',
+    priceDisplay: '₹999',
+    period: '/month',
+    description: 'Flexible monthly billing for regular GST operations',
+    features: [
+      'Core GST filing workflows',
+      'Invoice and record management',
+      'Email support',
+      'Basic reporting',
+      'Data backup',
+      'Dashboard access',
+    ],
+  },
+  {
+    planType: 'HalfYearly',
+    title: 'Half Yearly',
+    priceDisplay: '₹5,499',
+    period: '/6 months',
+    description: 'Balanced option for medium-term compliance planning',
+    popular: true,
+    features: [
+      'Standard GST return support',
+      'Extended invoice handling',
+      'Priority support',
+      'Business analytics',
+      'API access',
+      'Multi-user support',
+      'Custom integrations',
+      'Audit trail',
+    ],
+  },
+  {
+    planType: 'Yearly',
+    title: 'Yearly',
+    priceDisplay: '₹9,999',
+    period: '/year',
+    description: 'Long-term billing for full-year GST management',
+    features: [
+      'Multi-location support',
+      'Dedicated account manager',
+      'Custom integrations',
+      'White-label solution',
+      'Priority phone support',
+      'Advanced security',
+      'Custom reports',
+      'Training sessions',
+    ],
+  },
 ];
 
 const getTestModeHint = (code: string, description: string) => {
@@ -265,8 +320,8 @@ export function SubscriptionStatus() {
   };
 
   const planModal = isPlanModalOpen ? (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
-      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl p-6 md:p-8">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4 py-6">
+      <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl p-6 md:p-8 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-xl md:text-2xl font-bold text-gray-900">Choose Premium Plan</h3>
           <button
@@ -279,16 +334,41 @@ export function SubscriptionStatus() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {planConfig.map((plan) => (
-            <div key={plan.planType} className="border border-gray-200 rounded-xl p-4">
+            <div
+              key={plan.planType}
+              className={`border rounded-xl p-4 ${
+                plan.popular ? 'border-purple-400 ring-1 ring-purple-300 bg-purple-50/40' : 'border-gray-200'
+              }`}
+            >
+              {plan.popular && (
+                <div className="inline-block mb-2 text-xs font-semibold px-2 py-1 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white">
+                  Most Popular
+                </div>
+              )}
               <h4 className="font-semibold text-gray-900 text-lg">{plan.title}</h4>
               <p className="text-2xl font-bold text-gray-900 mt-1">
                 {plan.priceDisplay}
                 <span className="text-sm font-medium text-gray-500 ml-1">{plan.period}</span>
               </p>
+              <p className="text-sm text-gray-600 mt-2">{plan.description}</p>
+
+              <div className="mt-4 space-y-2">
+                {plan.features.map((feature) => (
+                  <div key={feature} className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-gray-700 leading-snug">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
               <button
                 onClick={() => startPlanPurchase(plan.planType)}
                 disabled={processingPlan === plan.planType}
-                className="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 rounded-lg"
+                className={`mt-5 w-full text-white font-semibold py-2 rounded-lg disabled:opacity-70 ${
+                  plan.popular
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {processingPlan === plan.planType ? 'Processing...' : `Pay ${plan.priceDisplay}`}
               </button>
