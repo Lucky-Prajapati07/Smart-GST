@@ -2,7 +2,7 @@
   "name": "smart-gst-monorepo",
   "private": true,
   "scripts": {
-    "prebuild": "cd Smart-GST-Filing-main && npm install",
+    "prebuild": "cd Smart-GST-Filing-main && npm install --include=dev",
     "build": "cd Smart-GST-Filing-main && npm run build",
     "dev": "cd Smart-GST-Filing-main && npm run dev",
     "start": "cd Smart-GST-Filing-main && npm run start",
