@@ -61,6 +61,12 @@ export class InvoicesService {
     `);
 
     await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "InvoiceOcrDocument"
+      ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP,
+      ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION update_invoice_ocr_updated_at()
       RETURNS TRIGGER AS $$
       BEGIN
@@ -138,9 +144,11 @@ export class InvoicesService {
         "rawText",
         "extractedData",
         "confidence",
-        "status"
+        "status",
+        "createdAt",
+        "updatedAt"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 'Processed')
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 'Processed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING "id"
       `,
       userId,
