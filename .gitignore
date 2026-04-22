@@ -9,3 +9,4 @@ node_modules/
 # Ignore build outputs and lockfiles commonly added
 package-lock.json
 yarn.lock
+/.next/
