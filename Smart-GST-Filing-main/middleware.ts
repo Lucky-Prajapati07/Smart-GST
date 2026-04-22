@@ -7,16 +7,19 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'luckyp8652@gmail.com')
   .split(',')
   .map(e => e.trim().toLowerCase())
   .filter(Boolean)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim()
 
-const publicRoutes = ['/login', '/signup', '/setup-business', '/', '/api/auth']
+const publicExactRoutes = ['/', '/login', '/signup', '/setup-business']
 
 function isPublicRoute(pathname: string): boolean {
-  return publicRoutes.some(route => pathname.startsWith(route))
+  if (pathname.startsWith('/api/auth')) {
+    return true
+  }
+  return publicExactRoutes.includes(pathname)
 }
 
 async function getUserAccessStatus(userId?: string) {
-  if (!userId) {
+  if (!userId || !API_BASE_URL) {
     return { accessAllowed: false, status: 'Pending' }
   }
   try {
