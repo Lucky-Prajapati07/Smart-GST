@@ -9,9 +9,7 @@
     "lint": "cd Smart-GST-Filing-main && npm run lint"
   },
   "dependencies": {
-    "@auth0/nextjs-auth0": "^4.14.1"
-  },
-  "devDependencies": {
+    "@auth0/nextjs-auth0": "^4.14.1",
     "next": "^14.2.30",
     "react": "^18",
     "react-dom": "^18"

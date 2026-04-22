@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "installCommand": "cd Smart-GST-Filing-main && npm install",
+  "installCommand": "npm install",
   "buildCommand": "cd Smart-GST-Filing-main && npm run build",
   "devCommand": "cd Smart-GST-Filing-main && npm run dev"
 }
