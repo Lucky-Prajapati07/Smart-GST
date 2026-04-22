@@ -43,6 +43,8 @@ When connecting GitHub repository to Vercel, choose one of the two safe options:
 ### Option B (works with this repo)
 - Keep Root Directory as repo root
 - This repo now includes root `build` scripts that forward to `Smart-GST-Filing-main`
+- Ensure Framework Preset is `Next.js` (not `Other`)
+- Ensure Output Directory is empty, or set via `vercel.json` to `Smart-GST-Filing-main/.next`
 
 ## 4) Set frontend environment variables in Vercel
 

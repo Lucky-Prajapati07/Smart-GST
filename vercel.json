@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm --prefix Smart-GST-Filing-main install",
+  "buildCommand": "npm --prefix Smart-GST-Filing-main run build",
+  "devCommand": "npm --prefix Smart-GST-Filing-main run dev",
+  "outputDirectory": "Smart-GST-Filing-main/.next"
+}
