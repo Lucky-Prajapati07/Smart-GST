@@ -2,11 +2,11 @@
   "name": "smart-gst-monorepo",
   "private": true,
   "scripts": {
-    "prebuild": "npm --prefix Smart-GST-Filing-main install",
-    "build": "npm --prefix Smart-GST-Filing-main run build",
-    "dev": "npm --prefix Smart-GST-Filing-main run dev",
-    "start": "npm --prefix Smart-GST-Filing-main run start",
-    "lint": "npm --prefix Smart-GST-Filing-main run lint"
+    "prebuild": "cd Smart-GST-Filing-main && npm install",
+    "build": "cd Smart-GST-Filing-main && npm run build",
+    "dev": "cd Smart-GST-Filing-main && npm run dev",
+    "start": "cd Smart-GST-Filing-main && npm run start",
+    "lint": "cd Smart-GST-Filing-main && npm run lint"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.14.1"
